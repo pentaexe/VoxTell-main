@@ -9,7 +9,8 @@ v2  GPU preprocess
     + disk cache     : 5.93s    (CUDA crop/norm, persistent embed cache)
 v3  Numba preprocess
     + INT4 quant
-    + batched window : TBD      (LLVM native code, 4-bit text model, batch=N patches)
+    + batched window : 5.58s   (LLVM native code, 4-bit text model, batch=N patches)
+v4  CT preprocessing fix: modality-aware z-score (CT=all voxels, MRI=nonzero only)
 """
 
 import hashlib
@@ -183,11 +184,15 @@ class VoxTellPredictor:
 
         data = data.astype(np.float32)
 
+        # Auto-detect modality: CT has Hounsfield units (air ≈ -1000 HU)
+        # MRI background is exactly 0.0. Threshold at -500 HU is safe for both.
+        is_ct = float(data.min()) < -500.0
+
         # Numba JIT — LLVM native bounding-box search
         data, bbox = numba_crop_to_nonzero(data)
 
-        # NumPy C backend — z-score normalization
-        data = numpy_zscore_normalize(data)
+        # NumPy C backend — z-score normalization (modality-aware)
+        data = numpy_zscore_normalize(data, is_ct=is_ct)
 
         return torch.from_numpy(data), bbox, original_shape
 

@@ -36,9 +36,9 @@ from typing import Dict, List, Tuple
 import numpy as np
 import torch
 import pandas as pd
-import SimpleITK as sitk
 from scipy.ndimage import zoom
 
+from nnunetv2.imageio.nibabel_reader_writer import NibabelIOWithReorient
 from voxtell.inference.predictor import VoxTellPredictor
 
 # Target spacing for resampling — matches VoxTell training distribution (~1mm MRI)
@@ -141,11 +141,18 @@ def compute_case_metrics(
 # ── NIfTI loading + resampling ────────────────────────────────────────────────
 
 def load_nifti(path: Path) -> Tuple[np.ndarray, np.ndarray]:
-    """Return (array in XYZ, spacing_mm as float64 [x,y,z])."""
-    itk = sitk.ReadImage(str(path))
-    arr = sitk.GetArrayFromImage(itk)          # SimpleITK returns (Z, Y, X)
-    arr = arr.transpose(2, 1, 0)               # → (X, Y, Z)
-    spacing = np.array(itk.GetSpacing(), dtype=np.float64)  # (x, y, z) mm
+    """
+    Load NIfTI using NibabelIOWithReorient — same reader used during VoxTell
+    training. This reorients every image to canonical (RAS/LPS) orientation,
+    which is critical for correct model input. SimpleITK returns raw voxel
+    order without reorientation, causing orientation mismatch and near-zero DSC.
+
+    Returns (array of shape (H, W, D), spacing_mm as float64 [x, y, z]).
+    """
+    reader = NibabelIOWithReorient()
+    images, props = reader.read_images([str(path)])   # → list of (C, H, W, D)
+    arr = images[0]                                    # (H, W, D)
+    spacing = np.array(props["spacing"], dtype=np.float64)
     return arr, spacing
 
 

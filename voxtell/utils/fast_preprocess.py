@@ -89,28 +89,38 @@ def numba_crop_to_nonzero(
     return cropped, bbox
 
 
-def numpy_zscore_normalize(data: np.ndarray) -> np.ndarray:
+def numpy_zscore_normalize(data: np.ndarray, is_ct: bool = False) -> np.ndarray:
     """
-    Z-score normalize image using NumPy C backend (non-zero voxels only).
+    Z-score normalize image using NumPy C backend.
 
-    Matches nnunetv2 ZScoreNormalization behaviour exactly. All operations
-    run through NumPy's C/Fortran backend — no Python loops.
+    Matches nnunetv2 ZScoreNormalization behaviour:
+      - MRI (is_ct=False): compute mean/std over non-zero voxels only.
+        MRI background is exactly 0.0 so this correctly excludes background.
+      - CT  (is_ct=True):  compute mean/std over ALL voxels.
+        CT Hounsfield units have no true zero — air is ~-1000 HU so the
+        non-zero mask would incorrectly include all voxels anyway.
 
     Args:
-        data: float32 array of shape (C, H, W, D)
+        data:  float32 array of shape (C, H, W, D)
+        is_ct: True for CT (HU values), False for MRI
 
     Returns:
         Normalized float32 array of same shape
     """
-    nonzero_mask = data != 0.0
-    if nonzero_mask.any():
-        vals = data[nonzero_mask]
-        mean = float(vals.mean())
-        std = float(vals.std())
-        std = max(std, 1e-8)
-    else:
+    if is_ct:
+        # CT: normalize over entire volume (all HU values are meaningful)
         mean = float(data.mean())
-        std = 1.0
+        std  = max(float(data.std()), 1e-8)
+    else:
+        # MRI: normalize over non-zero voxels (background is truly 0)
+        nonzero_mask = data != 0.0
+        if nonzero_mask.any():
+            vals = data[nonzero_mask]
+            mean = float(vals.mean())
+            std  = max(float(vals.std()), 1e-8)
+        else:
+            mean = float(data.mean())
+            std  = 1.0
 
     return ((data - mean) / std).astype(np.float32)
 
