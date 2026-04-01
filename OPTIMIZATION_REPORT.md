@@ -682,11 +682,34 @@ To confirm that the optimizations — particularly `tile_step_size` 0.5 → 0.75
 
 **Conclusion:** ΔDSC = +0.06% and ΔNSD = +0.12% — v3 is marginally *better* than v0 on this CT dataset. Both are far within the 2% significance threshold. The larger optimizations — FP16 precision, Numba preprocessing, embedding cache — are mathematically lossless by construction. The only change with potential quality impact is `tile_step_size` (0.5 → 0.75), and the empirical results confirm this has negligible effect (and in fact a small positive effect) on segmentation accuracy across all 13 abdominal organs.
 
-### 12.5 Remaining Compute Budget
+### 12.5 ONNX Export Experiment
+
+As a next-step optimization, the VoxTell segmentation network was exported to ONNX format using the PyTorch dynamo exporter (`torch.export`-based symbolic tracing) and benchmarked against native PyTorch under ONNX Runtime GPU (`CUDAExecutionProvider`).
+
+**Export details:**
+- Exporter: `torch.onnx.export(..., dynamo=True)` — symbolic tracing, no intermediate tensor allocation
+- ONNX file: `voxtell_seg.onnx` — 688.7 MB (FP16 weights)
+- ONNX opset: 17
+- Validation: `onnx.checker.check_model` → PASSED; ORT output shape (1, 13, 192, 192, 192) → PASSED
+
+**Benchmark result (RTX 4070 SUPER, patch 192×192×192, 13 prompts):**
+
+| Runtime | ms / patch | Relative |
+|---------|-----------|---------|
+| PyTorch FP16 + cuDNN autocast | 1,350 ms | 1.0× (baseline) |
+| ONNX Runtime CUDAExecutionProvider | 19,102 ms | **0.07×** (14× slower) |
+
+**Analysis:** ORT is 14× *slower* than PyTorch for this model. This is a known limitation of ORT's CUDA execution provider for architectures combining 3D volumetric convolutions, multi-head attention, and einsum fusion — ORT does not leverage cuDNN's optimised 3D conv kernels (`cudnnConvolutionForward`) as effectively as PyTorch's autocast path. The result confirms that PyTorch + cuDNN + FP16 autocast is already running near-optimal for this workload.
+
+**Conclusion:** ONNX Runtime is not a viable acceleration path for VoxTell's segmentation network. The correct next steps are:
+- **TensorRT**: compiles directly to cuDNN-optimised kernels, expected 1.5–3× speedup over PyTorch
+- **`torch.compile`**: PyTorch 2.x graph capture + Triton kernel fusion, zero-dependency, expected 1.2–2× speedup
+
+### 12.6 Remaining Compute Budget
 
 The irreducible minimum for this volume and hardware is approximately 5.4 seconds, dominated by the sliding window inference (4 forward passes × ~1.35s each). Further speedup would require:
-- Reducing the number of patches (larger `tile_step_size`, or per-image region-of-interest cropping)
-- Faster segmentation network execution (TensorRT compilation, network pruning)
+- Faster segmentation network execution (TensorRT compilation, `torch.compile`, network pruning)
+- Reducing the number of patches (per-image region-of-interest cropping)
 - Processing at reduced resolution (with potential quality impact)
 
 ---

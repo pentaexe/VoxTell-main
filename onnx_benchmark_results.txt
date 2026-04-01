@@ -1,0 +1,10 @@
+VoxTell ONNX Benchmark Results
+========================================
+ONNX file      : voxtell_seg.onnx
+ORT provider   : CUDAExecutionProvider
+Patch size     : (192, 192, 192)
+N prompts      : 13
+
+PyTorch FP16   : 1350.0 ms/patch  (from benchmark.py)
+ONNX Runtime   : 19102.29 ms/patch
+Speedup        : 0.07x
