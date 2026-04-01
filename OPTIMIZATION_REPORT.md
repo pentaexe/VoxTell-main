@@ -701,16 +701,39 @@ As a next-step optimization, the VoxTell segmentation network was exported to ON
 
 **Analysis:** ORT is 14× *slower* than PyTorch for this model. This is a known limitation of ORT's CUDA execution provider for architectures combining 3D volumetric convolutions, multi-head attention, and einsum fusion — ORT does not leverage cuDNN's optimised 3D conv kernels (`cudnnConvolutionForward`) as effectively as PyTorch's autocast path. The result confirms that PyTorch + cuDNN + FP16 autocast is already running near-optimal for this workload.
 
-**Conclusion:** ONNX Runtime is not a viable acceleration path for VoxTell's segmentation network. The correct next steps are:
-- **TensorRT**: compiles directly to cuDNN-optimised kernels, expected 1.5–3× speedup over PyTorch
-- **`torch.compile`**: PyTorch 2.x graph capture + Triton kernel fusion, zero-dependency, expected 1.2–2× speedup
+**Conclusion:** ONNX Runtime is not a viable acceleration path for VoxTell's segmentation network. The correct next steps are TensorRT (cuDNN-native) or `torch.compile` with Triton kernel fusion.
 
-### 12.6 Remaining Compute Budget
+### 12.6 torch.compile Experiment
 
-The irreducible minimum for this volume and hardware is approximately 5.4 seconds, dominated by the sliding window inference (4 forward passes × ~1.35s each). Further speedup would require:
-- Faster segmentation network execution (TensorRT compilation, `torch.compile`, network pruning)
-- Reducing the number of patches (per-image region-of-interest cropping)
-- Processing at reduced resolution (with potential quality impact)
+Following the ONNX result, `torch.compile` was evaluated using the `cudagraphs` backend (Triton is not officially supported on Windows and could not be installed).
+
+**Benchmark result (RTX 4070 SUPER, patch 192×192×192, 13 prompts):**
+
+| Runtime | ms / patch | Relative |
+|---------|-----------|---------|
+| PyTorch eager (v3) | 1,116.5 ms | 1.0× |
+| torch.compile (cudagraphs) | 1,115.6 ms | **1.00×** |
+
+**Analysis:** Zero improvement. `cudagraphs` eliminates CPU kernel launch overhead — but the bottleneck here is pure GPU compute (3D volumetric convolutions at 192³), not CPU-side dispatch latency. The model is already saturating the RTX 4070 SUPER's SM compute units via PyTorch's cuDNN kernel path.
+
+The `reduce-overhead` mode with Triton kernel fusion would fuse consecutive element-wise ops into single kernels, potentially giving 1.2–2× speedup — but Triton has no stable Windows build. This remains the primary path on Linux.
+
+### 12.7 Hardware Optimisation Frontier
+
+All software optimisation paths reachable on Windows have been exhausted:
+
+| Approach | Tried | Result | Reason |
+|----------|-------|--------|--------|
+| FP16 precision | ✓ | **~10× text encoder** | Eliminated CPU fallback |
+| Embedding cache | ✓ | **~∞× on repeat prompts** | Zero re-computation |
+| Numba JIT preprocessing | ✓ | **2.2× preprocessing** | LLVM native code |
+| tile_step 0.5→0.75 | ✓ | **3.5× sliding window** | Fewer patches |
+| ONNX Runtime | ✓ | 0.07× (14× slower) | ORT lacks cuDNN 3D conv opt |
+| torch.compile cudagraphs | ✓ | 1.00× (no change) | GPU-bound, not CPU-launch-bound |
+| torch.compile + Triton | ✗ | Not available on Windows | No stable Triton Windows build |
+| TensorRT | ✗ | Not yet attempted | Requires NVIDIA TRT installer |
+
+The 5.58s total inference time (26.0× over baseline) represents the practical optimisation ceiling for this hardware and OS. Further gains require either TensorRT on Linux/Windows, or architectural changes (smaller model, fewer prompts, ROI cropping).
 
 ---
 
