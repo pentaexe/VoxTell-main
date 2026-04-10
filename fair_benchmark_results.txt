@@ -1,0 +1,10 @@
+Fair GPU-vs-GPU Benchmark Results
+========================================
+GPU: NVIDIA GeForce RTX 4070 SUPER
+
+v0_gpu total : 3.10s  (FP16 GPU, tile_step=0.5, no cache, numpy preprocess)
+v3 total     : 2.38s  (all optimizations)
+Fair speedup : 1.3x
+
+Note: Original 26x used CPU baseline (FP32 text encoder VRAM overflow).
+Fair GPU-only speedup is 1.3x.

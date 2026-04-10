@@ -37,17 +37,22 @@
 
 The unmodified VoxTell v1.1 inference pipeline required **145.25 seconds** to process a single 189×233×197 MRI volume with two text prompts on an RTX 4070 SUPER GPU. The dominant cost — 126.02 seconds, **86.8% of total runtime** — was incurred entirely within the text embedding phase, caused by a silent hardware overflow: the 4-billion-parameter Qwen3-Embedding-4B text encoder in FP32 precision requires ~16 GB of VRAM, which exceeds the 12 GB available on this device, causing PyTorch to silently fall back to CPU execution.
 
-A series of seven targeted optimizations, applied incrementally and measured independently, reduced total inference time to **5.58 seconds** — a **26.0× speedup** against baseline, exceeding the 5× target by a factor of 5.2. All changes are made exclusively in inference code; model weights, architecture, and training are unchanged.
+A series of seven targeted optimizations reduced total inference time to **5.58 seconds** against the CPU-fallback baseline. A subsequent **fair GPU-vs-GPU comparison** (both runs on RTX 4070 SUPER, FP16 text encoder) was conducted to give an honest picture of the algorithmic speedup:
 
-| Metric | Baseline (v0) | Final (v3) | Change |
-|--------|--------------|------------|--------|
-| Total inference time | 145.25s | 5.58s | −96.2% |
-| Speedup | 1.0× | **26.0×** | — |
-| Target met (≥5×) | No | **Yes ✓** | — |
-| Preprocessing | 0.38s | 0.17s | −55% |
-| Text embedding | 126.02s | ~0.00s | −99.99% |
-| Sliding window | 18.66s | 5.38s | −71% |
-| Postprocessing | 0.19s | 0.03s | −84% |
+| Comparison | Baseline | Optimized | Speedup | Notes |
+|-----------|---------|----------|---------|-------|
+| CPU baseline vs GPU optimized | 145.25s | 5.58s | **26.0×** | Includes bug fix (CPU→GPU) |
+| **Fair GPU vs GPU** | **3.10s** | **2.38s** | **1.3×** | Pure algorithmic improvement |
+
+The 26.0× figure reflects a real and important improvement — the original pipeline was broken for this hardware due to silent CPU fallback. However, the honest algorithmic speedup on equal hardware is **1.3×**, primarily from the embedding cache (18.7× on repeated prompts) and Numba preprocessing (1.4×). This distinction is important for reproducibility on hardware where the FP32 overflow does not occur.
+
+| Metric | v0 CPU-fallback | v0 GPU (fair) | v3 GPU (optimized) |
+|--------|----------------|--------------|-------------------|
+| Total inference time | 145.25s | 3.10s | 2.38s |
+| Preprocessing | 0.38s | 0.13s | 0.09s |
+| Text embedding | 126.02s | 0.51s | 0.03s (cached) |
+| Sliding window | 18.66s | 2.44s | 2.22s |
+| Postprocessing | 0.19s | 0.03s | 0.03s |
 
 ---
 
