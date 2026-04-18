@@ -1,6 +1,7 @@
 # ComputeCanada Workflow — Brian Xiao
 **Lab:** Peter Munk Cardiac Centre AI Team (Dr. Jun Ma)  
-**Account:** axc-572-05  
+**Username:** brianx7  
+**Account:** axc-572-ac (RRG #5772 — Foundation Models for Medical Image Segmentation)  
 **Clusters:** Trillium (short jobs <1 day) · Fir (long jobs >1 day, lab has 10 RGU-years allocation)
 
 ---
@@ -24,26 +25,26 @@ Host *
 
 Host trillium-gpu.scinet.utoronto.ca
     IdentityFile ~/.ssh/ccdb
-    User <username>
+    User brianx7
 
 Host fir.alliancecan.ca
     IdentityFile ~/.ssh/ccdb
-    User <username>
+    User brianx7
 
 # Fir compute nodes (for VS Code direct connection)
 Host fc?????
     ProxyJump fir.alliancecan.ca
     IdentityFile ~/.ssh/ccdb
-    User <username>
+    User brianx7
 ```
 
 ### 1.3 Log in
 ```bash
 # Trillium (short jobs)
-ssh -i ~/.ssh/ccdb -Y USERNAME@trillium-gpu.scinet.utoronto.ca
+ssh -i ~/.ssh/ccdb -Y brianx7@trillium-gpu.scinet.utoronto.ca
 
 # Fir (long jobs, lab allocation)
-ssh -i ~/.ssh/ccdb -Y USERNAME@fir.alliancecan.ca
+ssh -i ~/.ssh/ccdb -Y brianx7@fir.alliancecan.ca
 ```
 
 ### 1.4 Create virtual environment (on login node only, quickly)
@@ -86,7 +87,7 @@ The lab has **10 RGU-years** exclusive allocation on **Fir**. Use it.
 ### 2.2 Example batch script (`train.sh`)
 ```bash
 #!/bin/bash
-#SBATCH --account=rrg-wanglab-ab
+#SBATCH --account=axc-572-ac
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=6
 #SBATCH --mem=140G
@@ -111,7 +112,7 @@ sbatch train.sh
 ```bash
 salloc --time=1:0:0 --mem=32G --ntasks=1 \
        --gpus=nvidia_h100_80gb_hbm3_2g.20gb:1 \
-       --account=rrg-wanglab-ab
+       --account=axc-572-ac
 ```
 
 **CRITICAL: Never run jobs >1 minute on the login node.**
@@ -166,7 +167,7 @@ Following the lab's standard recipe:
 # Request interactive H100 40G session
 salloc --time=2:0:0 --mem=140G --ntasks=6 \
        --gpus=nvidia_h100_80gb_hbm3_3g.40gb:1 \
-       --account=rrg-wanglab-ab
+       --account=axc-572-ac
 
 # In another terminal: monitor GPU
 srun --jobid <JOBID> --pty watch -n 10 nvidia-smi
@@ -193,7 +194,7 @@ sbatch train_full.sh  # one-day job with full H100 if needed
 
 ### 5.1 scp (small files)
 ```bash
-scp local_file.tar.gz USERNAME@fir.alliancecan.ca:/scratch/$USER/data/
+scp local_file.tar.gz brianx7@fir.alliancecan.ca:/scratch/$USER/data/
 ```
 
 ### 5.2 Globus (large datasets — recommended)
@@ -219,7 +220,7 @@ wget -O dataset.zip "https://download_link_here"
 ```bash
 # Batch script for interactive VS Code session
 #!/bin/bash
-#SBATCH --account=rrg-wanglab-ab
+#SBATCH --account=axc-572-ac
 #SBATCH --gpus=nvidia_h100_80gb_hbm3_3g.40gb:1
 #SBATCH --mem=140G
 #SBATCH --ntasks=6
