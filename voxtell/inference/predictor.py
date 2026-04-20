@@ -83,8 +83,8 @@ def _load_text_backbone(model_name: str, device: torch.device):
         print(f"  [Text backbone] INT4 (NF4) quantization — ~2GB VRAM")
         return model, True
     except Exception as e:
-        print(f"  [Text backbone] INT4 unavailable ({type(e).__name__}), using FP16 on CPU")
-        model = AutoModel.from_pretrained(model_name, dtype=torch.float16).eval()
+        print(f"  [Text backbone] INT4 unavailable ({type(e).__name__}), using FP16 on GPU")
+        model = AutoModel.from_pretrained(model_name, dtype=torch.float16).eval().to(device)
         return model, False
 
 
