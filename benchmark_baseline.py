@@ -9,8 +9,14 @@ from nnunetv2.imageio.nibabel_reader_writer import NibabelIOWithReorient
 from acvl_utils.cropping_and_padding.bounding_boxes import insert_crop_into_image
 from voxtell.inference.predictor import VoxTellPredictor
 
-IMAGE_PATH = r"C:\Users\brian\nilearn_data\icbm152_2009\mni_icbm152_nlin_sym_09a\mni_icbm152_t1_tal_nlin_sym_09a.nii.gz"
-MODEL_DIR  = r"C:\Users\brian\OneDrive\Desktop\Code\VoxTell-main\models\voxtell_v1.1"
+import os
+_DEFAULT_IMAGE = r"C:\Users\brian\nilearn_data\icbm152_2009\mni_icbm152_nlin_sym_09a\mni_icbm152_t1_tal_nlin_sym_09a.nii.gz"
+_CLUSTER_IMAGE = "/scratch/brianx7/mni_icbm152_t1_tal_nlin_sym_09a.nii.gz"
+IMAGE_PATH = _CLUSTER_IMAGE if os.path.exists(_CLUSTER_IMAGE) else _DEFAULT_IMAGE
+
+_DEFAULT_MODEL = r"C:\Users\brian\OneDrive\Desktop\Code\VoxTell-main\models\voxtell_v1.1"
+_CLUSTER_MODEL = "/scratch/brianx7/VoxTell-main/models/voxtell_v1.1"
+MODEL_DIR = _CLUSTER_MODEL if os.path.exists(_CLUSTER_MODEL) else _DEFAULT_MODEL
 PROMPTS    = ["brain", "left hemisphere"]
 DEVICE     = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
