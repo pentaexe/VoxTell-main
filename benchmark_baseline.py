@@ -23,19 +23,19 @@ DEVICE     = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 # ── Recorded baselines for comparison ────────────────────────────────────────
 CHANGELOG = [
     {
-        "version": "v0 — Original baseline",
-        "changes": "Unmodified VoxTell (FP32 text model on CPU, tile_step=0.5)",
-        "preprocess": 0.38, "text_embed": 126.02, "sliding": 18.66, "postprocess": 0.19,
+        "version": "v0_gpu — GPU baseline",
+        "changes": "FP16 text model on GPU, tile_step=0.5, no cache (RTX 4070 SUPER)",
+        "preprocess": 0.13, "text_embed": 0.51, "sliding": 2.44, "postprocess": 0.03,
     },
     {
-        "version": "v1 — FP16 + VRAM mgmt + tile_step 0.75",
-        "changes": "FP16 text model on GPU, offload after embed, tile_step_size=0.75",
-        "preprocess": 0.10, "text_embed": 2.70, "sliding": 5.22, "postprocess": 0.04,
+        "version": "v1 — tile_step=0.75",
+        "changes": "Reduce overlap: tile_step_size 0.5→0.75, fewer patches",
+        "preprocess": 0.13, "text_embed": 0.51, "sliding": 2.22, "postprocess": 0.03,
     },
     {
-        "version": "v2 — GPU preprocess + disk cache",
-        "changes": "CUDA crop/norm, 2-level embed cache, backbone CPU-start",
-        "preprocess": 0.20, "text_embed": 0.02, "sliding": 5.58, "postprocess": 0.03,
+        "version": "v2 — + embedding cache",
+        "changes": "2-level embed cache (memory LRU + disk SHA-256)",
+        "preprocess": 0.13, "text_embed": 0.02, "sliding": 2.22, "postprocess": 0.03,
     },
 ]
 
@@ -114,8 +114,8 @@ print(f"  Shape : {seg.shape}  |  Time: {t_postprocess:.3f}s")
 # ── Current run totals ────────────────────────────────────────────────────────
 t_current = t_preprocess + t_embed + t_inference + t_postprocess
 CHANGELOG.append({
-    "version": "v3 — Numba + INT4 + batched",
-    "changes": "Numba JIT preprocess + INT4 text backbone + batched sliding window",
+    "version": "CURRENT RUN",
+    "changes": "Numba JIT preprocess + embed cache + tile_step=0.75",
     "preprocess": t_preprocess,
     "text_embed": t_embed,
     "sliding": t_inference,
