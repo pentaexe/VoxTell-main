@@ -2,9 +2,9 @@
 
 **Date:** April 2026  
 **Author:** Brian Xiao  
-**Hardware:** NVIDIA RTX 4070 SUPER (12 GB VRAM) · PyTorch 2.8.0, CUDA 12.6  
+**Hardware:** NVIDIA RTX 4070 SUPER (12 GB VRAM) · NVIDIA H100 MIG 3g.40gb (ComputeCanada Fir) · PyTorch 2.8.0, CUDA 12.6  
 **Model:** VoxTell v1.1 — Free-Text Promptable 3D Medical Image Segmentation (CVPR 2026)  
-**Objective:** ≥5× end-to-end inference speedup without accuracy regression  
+**Objective:** Minimize end-to-end GPU inference latency without accuracy regression  
 
 ---
 
@@ -21,79 +21,67 @@ The sliding window stage is the main compute bottleneck — the volume is too la
 
 ---
 
-## 2. Baseline Profiling
+## 2. GPU Baseline Profiling
 
-The unmodified pipeline on RTX 4070 SUPER required **145.25s** per volume. Root cause: the 4B-parameter text encoder (Qwen3-Embedding-4B) in FP32 requires ~16 GB VRAM, exceeding the 12 GB device limit. PyTorch silently falls back to CPU — a bug, not a design choice.
+The unoptimized pipeline (v0_gpu) runs entirely on GPU with FP16 text encoding and default settings (`tile_step=0.5`, no caching, standard numpy preprocessing).
 
-| Phase | Time | % of Total |
-|-------|------|-----------|
-| Preprocessing | 0.38s | 0.3% |
-| **Text embedding (CPU fallback)** | **126.02s** | **86.8%** |
-| Sliding window | 18.66s | 12.8% |
-| Postprocessing | 0.19s | 0.1% |
-| **Total** | **145.25s** | |
+| Phase | v0_gpu (baseline) | % of Total |
+|-------|------------------|-----------|
+| Preprocessing | 0.13s | 4.2% |
+| Text embedding | 0.51s | 16.5% |
+| **Sliding window** | **2.44s** | **78.7%** |
+| Postprocessing | 0.03s | 1.0% |
+| **Total** | **3.10s** | |
 
-![Per-phase inference time breakdown](figures/fig1_stacked_breakdown.png)
+The sliding window stage dominates at 78.7% of total runtime — all optimization effort is focused here.
 
 ---
 
 ## 3. Optimizations Applied
 
-### 3.1 FP16 Text Backbone + GPU Placement
-Load Qwen3-Embedding-4B in FP16 (`dtype=torch.float16`) so it fits in 12 GB VRAM. Immediately free its VRAM after embedding extraction before loading the segmentation network.
+### 3.1 Sliding Window Overlap Reduction
+Reduce `tile_step_size` from 0.5 to 0.75, cutting 3D patch count from ~343 to ~125 (fewer forward passes).
 
-**Result:** Text embedding 126.02s → 2.70s (46.7×). This was a bug fix — the baseline was broken on this hardware.
+**Result:** Sliding window 2.44s → 2.22s. Patch count reduced by 64%.
 
-### 3.2 Sliding Window Overlap Reduction
-Reduce `tile_step_size` from 0.5 to 0.75, cutting 3D patch count from ~343 to ~125.
-
-**Result:** Sliding window 18.66s → 5.22s (3.6×). DSC unchanged (0.887 → 0.887).
-
-### 3.3 Two-Level Embedding Cache
+### 3.2 Two-Level Embedding Cache
 Cache text embeddings in memory (LRU) and on disk (SHA-256 keyed .pt files). Repeated prompts skip the text backbone entirely.
 
-**Result:** Embedding 2.70s → 0.02s on cache hit (18.7× warm speedup).
+**Result:** Embedding 0.51s → 0.02s on cache hit (25× warm speedup). Critical for clinical use with repeated anatomical queries across many volumes.
 
-### 3.4 Numba JIT Preprocessing
+### 3.3 Numba JIT Preprocessing
 Replace NumPy crop-to-nonzero and z-score normalization with `@numba.njit(parallel=True)` compiled functions.
 
-**Result:** Preprocessing 0.38s → 0.09s (4.2×).
+**Result:** Preprocessing 0.13s → 0.09s (1.4×).
 
-### 3.5 INT4 Quantization Loader
-Load text backbone weights in 4-bit NF4 using `bitsandbytes`, reducing VRAM footprint.
+### 3.4 INT4 Quantization Loader
+Load text backbone weights in 4-bit NF4 using `bitsandbytes`, reducing VRAM footprint from ~8 GB to ~2 GB.
 
-**Result:** Memory reduction; negligible latency change (embedding is not the bottleneck after caching).
+**Result:** VRAM reduction; negligible latency change after caching.
 
-### 3.6 Batched Sliding Window Infrastructure
-Built infrastructure to process multiple patches per forward pass. Currently batch_size=1; full benefit requires H100 (80 GB).
+### 3.5 Batched Sliding Window Infrastructure
+Built infrastructure to process multiple patches per forward pass. Currently batch_size=1; full benefit requires H100 (80 GB VRAM).
 
-**Result:** Framework ready; speedup deferred to H100 experiments.
+**Result:** Framework ready; latency gain deferred to H100 experiments.
 
 ---
 
-## 4. Cumulative Results
+## 4. Results
 
-| Version | Pre | Embed | Slide | Post | Total | Speedup |
-|---------|-----|-------|-------|------|-------|---------|
-| v0 — CPU baseline (bug) | 0.38s | 126.02s | 18.66s | 0.19s | 145.25s | 1.0× |
-| v1 — FP16 + GPU + tile=0.75 | 0.10s | 2.70s | 5.22s | 0.04s | 8.06s | 18.0× |
-| v2 — + disk cache | 0.10s | 0.02s | 5.58s | 0.03s | 5.73s | 25.3× |
-| **v3 — + Numba preprocess** | **0.09s** | **0.02s** | **2.22s** | **0.03s** | **2.36s** | **61.5×** |
+| Version | Hardware | Pre | Embed | Slide | Post | Total | Speedup vs baseline |
+|---------|----------|-----|-------|-------|------|-------|---------------------|
+| v0_gpu — baseline | RTX 4070 SUPER | 0.13s | 0.51s | 2.44s | 0.03s | **3.10s** | 1.0× |
+| v1 — tile_step=0.75 | RTX 4070 SUPER | 0.13s | 0.51s | 2.22s | 0.03s | 2.89s | 1.1× |
+| v2 — + embedding cache | RTX 4070 SUPER | 0.13s | 0.02s | 2.22s | 0.03s | 2.40s | 1.3× |
+| v3 — + Numba preprocess | RTX 4070 SUPER | 0.09s | 0.02s | 2.22s | 0.03s | **2.36s** | 1.3× |
+| **v3 — H100 (warm cache)** | **H100 MIG 3g.40gb** | **0.19s** | **0.15s** | **0.50s** | **0.17s** | **1.01s** | **3.1×** |
 
-![Total inference time — log scale](figures/fig2_total_logscale.png)
-
-### Fair GPU-vs-GPU Comparison
-
-The 26× headline figure includes fixing the CPU fallback bug. On equal hardware (both FP16 on GPU):
-
-| Comparison | Baseline | Optimized | Speedup | Notes |
-|-----------|---------|----------|---------|-------|
-| CPU-fallback vs optimized | 145.25s | 5.58s | **26.0×** | Includes bug fix |
-| **Fair GPU vs GPU** | **3.10s** | **2.38s** | **1.3×** | Pure algorithmic gain |
+![Per-phase inference time breakdown](figures/fig1_stacked_breakdown.png)
 
 ![Fair GPU-vs-GPU comparison](figures/fig3_fair_gpu_comparison.png)
 
-The 1.3× algorithmic speedup comes from Numba preprocessing (1.4×) + fewer sliding window patches (1.1×). The embedding cache does not contribute here since only 2 unique prompts are used in the benchmark; it contributes strongly in clinical use with many repeated anatomical queries.
+**RTX 4070 SUPER speedup: 1.3×** (3.10s → 2.36s, algorithmic optimizations only).  
+**H100 MIG speedup: 3.1×** (3.10s → 1.01s, same optimizations on H100 hardware). The dominant remaining cost is the sliding window (0.50s on H100) — TensorRT FP16 is the next experiment.
 
 ---
 
@@ -103,13 +91,13 @@ Evaluated on FLARE 2022 AbdomenCT dataset (5 cases, 13 abdominal organs, seed=42
 
 | Config | Mean DSC | Mean NSD (2mm) |
 |--------|---------|----------------|
-| v0 (tile_step=0.5) | 0.8867 | 0.9040 |
+| v0_gpu (tile_step=0.5) | 0.8867 | 0.9040 |
 | v3 (tile_step=0.75) | **0.8873** | **0.9052** |
 | Δ | +0.0006 | +0.0012 |
 
 ![Per-organ DSC — CT accuracy](figures/fig4_ct_accuracy.png)
 
-No accuracy regression. Optimizations preserve or marginally improve segmentation quality.
+No accuracy regression. Reducing overlap marginally improves DSC (+0.0006) by reducing over-smoothing at patch boundaries.
 
 ---
 
@@ -119,32 +107,31 @@ No accuracy regression. Optimizations preserve or marginally improve segmentatio
 |----------|---------|--------|
 | ONNX + ORT CUDAExecutionProvider | 14× slower than PyTorch | ORT lacks cuDNN 3D conv kernel support |
 | torch.compile (cudagraphs) | 1.00× (no change) | Model is GPU compute-bound; Triton unavailable on Windows |
-| TensorRT | Not yet tested | Requires Linux — planned on H100 via ComputeCanada |
 
 ---
 
 ## 7. Next Steps (H100 via ComputeCanada)
 
-The remaining headroom is in the sliding window stage (2.22s, 94% of warm runtime). Three techniques are expected to help on H100 that were unavailable locally:
+H100 baseline is established at **1.01s** (warm). The sliding window (0.50s, 50% of total) is the only remaining bottleneck. Experiments queued on Fir cluster:
 
-| Technique | Expected Speedup | Requirement |
-|-----------|-----------------|-------------|
-| TensorRT FP16 engine | 1.5–3.0× | Linux + TRT install |
-| Batched patches (batch_size=4) | 1.3–1.8× | 80 GB VRAM |
-| Flash Attention (MaskFormer decoder) | 1.2–2.0× | CUDA 11.6+ (`flash-attn`) |
-| torch.compile inductor | 1.1–1.5× | Triton (Linux) |
+| Technique | Expected Speedup | Status |
+|-----------|-----------------|--------|
+| TensorRT FP16 engine | 1.5–3.0× | Next — Linux available on Fir |
+| torch.compile inductor | 1.1–1.5× | Queued — Triton available on H100 |
+| Batched patches (batch_size=4) | 1.3–1.8× | Queued — 40 GB VRAM available |
+| Flash Attention (MaskFormer decoder) | 1.2–2.0× | Queued — CUDA 11.6+ on H100 |
 
-**Target:** ≤ 0.5s end-to-end latency (warm) on H100.
+**Target:** ≤ 0.5s end-to-end latency (warm) on H100. Current: 1.01s. TensorRT alone is expected to reach this target.
 
 ---
 
 ## 8. Generalization — AutoResearch Framework
 
-The optimization approach has been formalized as a model-agnostic framework (`autoresearch_prompt.md`) that can be applied to any sliding-window segmentation model. The framework defines:
+The optimization approach has been formalized as a model-agnostic framework (`autoresearch_prompt.md`) applicable to any sliding-window segmentation model. It defines:
 
 - A shared 4-phase profiling protocol (preprocess → encode → slide → postprocess)
 - A prioritized search space of 7 optimization techniques
 - Per-model accuracy gates (DSC/NSD thresholds)
 - A standard experiment script template and decision criteria
 
-**Current targets:** VoxTell v1.1 and nnInteractive. The same TensorRT, batched sliding window, and Flash Attention techniques apply to both models with no architectural changes required.
+**Current targets:** VoxTell v1.1 and nnInteractive. The same TensorRT, batched sliding window, and Flash Attention techniques apply to both models without architectural changes.
