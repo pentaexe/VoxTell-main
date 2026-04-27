@@ -73,12 +73,26 @@ print(f"  Shape : {embeddings.shape}  |  Time: {t_embed:.3f}s")
 print("\n[Phase 3] Sliding window inference (torch.compile)...")
 slicers = predictor._internal_get_sliding_window_slicers(data.shape[1:])
 print(f"  Patches: {len(slicers)}")
-t0 = time.perf_counter()
-prediction = predictor.predict_sliding_window_return_logits(data, embeddings)
-if DEVICE.type == "cuda":
-    torch.cuda.synchronize()
-t_inference = time.perf_counter() - t0
-print(f"  Time: {t_inference:.3f}s")
+
+# Warmup: 2 passes to trigger cuDNN autotuning before timing
+print("  Warming up (2 passes)...")
+for _ in range(2):
+    _ = predictor.predict_sliding_window_return_logits(data, embeddings)
+    if DEVICE.type == "cuda":
+        torch.cuda.synchronize()
+
+print("  Timing (3 passes, reporting mean)...")
+times = []
+for _ in range(3):
+    if DEVICE.type == "cuda":
+        torch.cuda.synchronize()
+    t0 = time.perf_counter()
+    prediction = predictor.predict_sliding_window_return_logits(data, embeddings)
+    if DEVICE.type == "cuda":
+        torch.cuda.synchronize()
+    times.append(time.perf_counter() - t0)
+t_inference = float(np.mean(times))
+print(f"  Time: {t_inference:.3f}s  (runs: {[f'{t:.3f}s' for t in times]})")
 
 # ── Phase 4: Postprocessing ───────────────────────────────────────────────────
 print("\n[Phase 4] Postprocessing...")
