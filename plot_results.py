@@ -13,11 +13,11 @@ from pathlib import Path
 
 Path("figures").mkdir(exist_ok=True)
 
-VERSIONS = ["v0\n(CPU bug)", "v1\nFP16+GPU\ntile=0.75", "v2\n+Cache", "v3\n+Numba"]
-PRE   = [0.38, 0.10, 0.10, 0.09]
-EMBED = [126.02, 2.70, 0.02, 0.02]
-SLIDE = [18.66, 5.22, 5.58, 2.22]
-POST  = [0.19, 0.04, 0.03, 0.03]
+VERSIONS = ["v0_gpu\n(baseline)", "v1\ntile=0.75", "v2\n+Cache", "v3\n+Numba"]
+PRE   = [0.13, 0.13, 0.13, 0.09]
+EMBED = [0.51, 0.51, 0.02, 0.02]
+SLIDE = [2.44, 2.22, 2.22, 2.22]
+POST  = [0.03, 0.03, 0.03, 0.03]
 TOTALS = [p+e+s+po for p,e,s,po in zip(PRE, EMBED, SLIDE, POST)]
 
 COLORS = {
@@ -39,21 +39,21 @@ bars_post  = ax.bar(x, POST,  w, bottom=[p+e+s for p,e,s in zip(PRE,EMBED,SLIDE)
 
 # Annotate totals
 for i, total in enumerate(TOTALS):
-    ax.text(i, total + 1.5, f"{total:.2f}s", ha="center", va="bottom", fontsize=10, fontweight="bold")
+    ax.text(i, total + 0.05, f"{total:.2f}s", ha="center", va="bottom", fontsize=10, fontweight="bold")
 
 ax.set_xticks(x)
 ax.set_xticklabels(VERSIONS, fontsize=10)
 ax.set_ylabel("Inference Time (seconds)", fontsize=12)
 ax.set_title("VoxTell Inference Time — Per-Phase Breakdown by Optimization Version", fontsize=13, fontweight="bold")
 ax.legend(loc="upper right", fontsize=10)
-ax.set_ylim(0, 165)
+ax.set_ylim(0, 4.5)
 ax.spines["top"].set_visible(False)
 ax.spines["right"].set_visible(False)
 
 # Annotate speedup vs v0
 for i in range(1, len(VERSIONS)):
     speedup = TOTALS[0] / TOTALS[i]
-    ax.text(i, TOTALS[i] + 6, f"{speedup:.1f}×", ha="center", va="bottom",
+    ax.text(i, TOTALS[i] + 0.08, f"{speedup:.1f}×", ha="center", va="bottom",
             fontsize=9, color="black",
             bbox=dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor="gray", alpha=0.8))
 
@@ -71,22 +71,19 @@ for bar, total in zip(bars, TOTALS):
     ax.text(bar.get_x() + bar.get_width()/2, total * 1.15,
             f"{total:.2f}s", ha="center", va="bottom", fontsize=11, fontweight="bold")
 
-ax.set_yscale("log")
 ax.set_xticks(x)
 ax.set_xticklabels(VERSIONS, fontsize=10)
-ax.set_ylabel("Total Inference Time (seconds, log scale)", fontsize=12)
-ax.set_title("Total Inference Time — Log Scale Comparison", fontsize=13, fontweight="bold")
-ax.set_ylim(0.5, 500)
+ax.set_ylabel("Total Inference Time (seconds)", fontsize=12)
+ax.set_title("Total Inference Time — GPU Baseline to Optimized", fontsize=13, fontweight="bold")
+ax.set_ylim(0, 4.0)
 ax.spines["top"].set_visible(False)
 ax.spines["right"].set_visible(False)
 
 # Speedup labels
 for i in range(1, len(VERSIONS)):
     speedup = TOTALS[0] / TOTALS[i]
-    ax.annotate(f"{speedup:.1f}× faster\nvs v0",
-                xy=(i, TOTALS[i]), xytext=(i + 0.35, TOTALS[i] * 2.5),
-                fontsize=8.5, color="navy",
-                arrowprops=dict(arrowstyle="->", color="navy", lw=1.2))
+    ax.text(i, TOTALS[i] + 0.08, f"{speedup:.2f}×\nfaster", ha="center",
+            fontsize=8.5, color="navy")
 
 plt.tight_layout()
 plt.savefig("figures/fig2_total_logscale.png", dpi=150, bbox_inches="tight")

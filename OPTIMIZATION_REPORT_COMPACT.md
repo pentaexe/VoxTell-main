@@ -112,7 +112,7 @@ No accuracy regression. Reducing overlap marginally improves DSC (+0.0006) by re
 
 ## 7. Next Steps (H100 via ComputeCanada)
 
-H100 baseline is established at **1.01s** (warm). The sliding window (0.50s, 50% of total) is the only remaining bottleneck. Experiments queued on Fir cluster:
+H100 baseline is established at **0.93s** (warm). The sliding window (0.50s, 50% of total) is the only remaining bottleneck. Experiments queued on Fir cluster:
 
 | Technique | Expected Speedup | Status |
 |-----------|-----------------|--------|
