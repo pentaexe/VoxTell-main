@@ -74,14 +74,14 @@ Built infrastructure to process multiple patches per forward pass. Currently bat
 | v1 — tile_step=0.75 | RTX 4070 SUPER | 0.13s | 0.51s | 2.22s | 0.03s | 2.89s | 1.1× |
 | v2 — + embedding cache | RTX 4070 SUPER | 0.13s | 0.02s | 2.22s | 0.03s | 2.40s | 1.3× |
 | v3 — + Numba preprocess | RTX 4070 SUPER | 0.09s | 0.02s | 2.22s | 0.03s | **2.36s** | 1.3× |
-| **v3 — H100 (warm cache)** | **H100 MIG 3g.40gb** | **0.19s** | **0.15s** | **0.50s** | **0.17s** | **1.01s** | **3.1×** |
+| **v3 — H100 (warm cache)** | **H100 MIG 3g.40gb** | **0.20s** | **0.06s** | **0.50s** | **0.18s** | **0.93s** | **3.3×** |
 
 ![Per-phase inference time breakdown](figures/fig1_stacked_breakdown.png)
 
 ![Fair GPU-vs-GPU comparison](figures/fig3_fair_gpu_comparison.png)
 
 **RTX 4070 SUPER speedup: 1.3×** (3.10s → 2.36s, algorithmic optimizations only).  
-**H100 MIG speedup: 3.1×** (3.10s → 1.01s, same optimizations on H100 hardware). The dominant remaining cost is the sliding window (0.50s on H100) — TensorRT FP16 is the next experiment.
+**H100 MIG speedup: 3.3×** (3.10s → 0.93s, same optimizations on H100 hardware). The dominant remaining cost is the sliding window (0.50s, 54% of total) — TensorRT FP16 is the next experiment.
 
 ---
 
@@ -121,7 +121,7 @@ H100 baseline is established at **1.01s** (warm). The sliding window (0.50s, 50%
 | Batched patches (batch_size=4) | 1.3–1.8× | Queued — 40 GB VRAM available |
 | Flash Attention (MaskFormer decoder) | 1.2–2.0× | Queued — CUDA 11.6+ on H100 |
 
-**Target:** ≤ 0.5s end-to-end latency (warm) on H100. Current: 1.01s. TensorRT alone is expected to reach this target.
+**Target:** ≤ 0.5s end-to-end latency (warm) on H100. Current: **0.93s** (job 37427405). TensorRT alone is expected to reach this target.
 
 ---
 
