@@ -68,20 +68,28 @@ Built infrastructure to process multiple patches per forward pass. Currently bat
 
 ## 4. Results
 
-| Version | Hardware | Pre | Embed | Slide | Post | Total | Speedup vs baseline |
-|---------|----------|-----|-------|-------|------|-------|---------------------|
-| v0_gpu — baseline | RTX 4070 SUPER | 0.13s | 0.51s | 2.44s | 0.03s | **3.10s** | 1.0× |
-| v1 — tile_step=0.75 | RTX 4070 SUPER | 0.13s | 0.51s | 2.22s | 0.03s | 2.89s | 1.1× |
-| v2 — + embedding cache | RTX 4070 SUPER | 0.13s | 0.02s | 2.22s | 0.03s | 2.40s | 1.3× |
-| v3 — + Numba preprocess | RTX 4070 SUPER | 0.09s | 0.02s | 2.22s | 0.03s | **2.36s** | 1.3× |
-| **v3 — H100 (warm cache)** | **H100 MIG 3g.40gb** | **0.20s** | **0.06s** | **0.50s** | **0.18s** | **0.93s** | **3.3×** |
+**RTX 4070 SUPER — algorithmic optimization progress:**
+
+| Version | Pre | Embed | Slide | Post | Total | Speedup |
+|---------|-----|-------|-------|------|-------|---------|
+| v0_gpu — baseline (RTX) | 0.13s | 0.51s | 2.44s | 0.03s | **3.10s** | 1.0× |
+| v1 — tile_step=0.75 | 0.13s | 0.51s | 2.22s | 0.03s | 2.89s | 1.1× |
+| v2 — + embedding cache | 0.13s | 0.02s | 2.22s | 0.03s | 2.40s | 1.3× |
+| v3 — + Numba preprocess | 0.09s | 0.02s | 2.22s | 0.03s | **2.36s** | 1.3× |
+
+**H100 MIG 3g.40gb — fair algorithmic comparison (job 38142016 / 37427405):**
+
+| Version | Pre | Embed | Slide | Post | Total | Speedup |
+|---------|-----|-------|-------|------|-------|---------|
+| v0_gpu — baseline (H100, cold) | 0.14s | 6.76s | 0.51s | 0.12s | **7.53s** | 1.0× |
+| **v3 — optimized (H100, warm cache)** | **0.20s** | **0.06s** | **0.50s** | **0.18s** | **0.93s** | **8.1×** |
 
 ![Per-phase inference time breakdown](figures/fig1_stacked_breakdown.png)
 
 ![Fair GPU-vs-GPU comparison](figures/fig3_fair_gpu_comparison.png)
 
-**RTX 4070 SUPER speedup: 1.3×** (3.10s → 2.36s, algorithmic optimizations only).  
-**H100 MIG speedup: 3.3×** (3.10s → 0.93s, same optimizations on H100 hardware). The dominant remaining cost is the sliding window (0.50s, 54% of total) — TensorRT FP16 is the next experiment.
+**Algorithmic speedup on RTX 4070 SUPER: 1.3×** (3.10s → 2.36s).  
+**Algorithmic speedup on H100: 8.1×** (7.53s → 0.93s) — driven primarily by the embedding cache (6.76s cold → 0.06s warm). The dominant remaining cost is the sliding window (0.50s) — TensorRT FP16 is the next experiment.
 
 ---
 
