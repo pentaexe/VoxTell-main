@@ -95,7 +95,7 @@ fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
 phases = ["Preprocessing", "Text Embedding", "Sliding Window", "Postprocessing"]
 v0_h100 = [0.14, 6.76, 0.51, 0.12]   # H100 unoptimized (cold embed, tile_step=0.5)
-v3_h100 = [0.20, 0.06, 0.50, 0.18]   # H100 optimized   (warm cache, tile_step=0.75)
+v3_h100 = [0.20, 0.06, 0.50, 0.17]   # H100 optimized   (warm cache, tile_step=0.75)
 x2 = np.arange(len(phases))
 w2 = 0.35
 

@@ -31,7 +31,7 @@ The unoptimized pipeline (v0_gpu) runs entirely on GPU with FP16 text encoding a
 | Text embedding | 0.51s | 16.5% |
 | **Sliding window** | **2.44s** | **78.7%** |
 | Postprocessing | 0.03s | 1.0% |
-| **Total** | **3.10s** | |
+| **Total** | **3.11s** | |
 
 The sliding window stage dominates at 78.7% of total runtime — all optimization effort is focused here.
 
@@ -47,7 +47,7 @@ Reduce `tile_step_size` from 0.5 to 0.75, reducing patch overlap and the number 
 ### 3.2 Two-Level Embedding Cache
 Cache text embeddings in memory (LRU) and on disk (SHA-256 keyed .pt files). Repeated prompts skip the text backbone entirely.
 
-**Result:** Embedding 0.51s → 0.02s on cache hit (25× warm speedup). Critical for clinical use with repeated anatomical queries across many volumes.
+**Result:** Embedding 0.51s → 0.02s on cache hit on RTX (25×); 6.76s → 0.06s on H100 (113×). Critical for clinical use with repeated anatomical queries across many volumes.
 
 ### 3.3 Numba JIT Preprocessing
 Replace NumPy crop-to-nonzero and z-score normalization with `@numba.njit(parallel=True)` compiled functions.
@@ -72,7 +72,7 @@ Built infrastructure to process multiple patches per forward pass. Currently bat
 
 | Version | Pre | Embed | Slide | Post | Total | Speedup |
 |---------|-----|-------|-------|------|-------|---------|
-| v0_gpu — baseline (RTX) | 0.13s | 0.51s | 2.44s | 0.03s | **3.10s** | 1.0× |
+| v0_gpu — baseline (RTX) | 0.13s | 0.51s | 2.44s | 0.03s | **3.11s** | 1.0× |
 | v1 — tile_step=0.75 | 0.13s | 0.51s | 2.22s | 0.03s | 2.89s | 1.1× |
 | v2 — + embedding cache | 0.13s | 0.02s | 2.22s | 0.03s | 2.40s | 1.3× |
 | v3 — + Numba preprocess | 0.09s | 0.02s | 2.22s | 0.03s | **2.36s** | 1.3× |
@@ -88,7 +88,7 @@ Built infrastructure to process multiple patches per forward pass. Currently bat
 
 ![Fair GPU-vs-GPU comparison](figures/fig3_fair_gpu_comparison.png)
 
-**Algorithmic speedup on RTX 4070 SUPER: 1.3×** (3.10s → 2.36s).  
+**Algorithmic speedup on RTX 4070 SUPER: 1.3×** (3.11s → 2.36s).  
 **Algorithmic speedup on H100: 8.1×** (7.53s → 0.93s) — driven primarily by the embedding cache (6.76s cold → 0.06s warm). The dominant remaining cost is the sliding window (0.50s) — TensorRT FP16 is the next experiment.
 
 ---
@@ -120,7 +120,7 @@ No accuracy regression. Reducing overlap marginally improves DSC (+0.0006) by re
 
 ## 7. Next Steps (H100 via ComputeCanada)
 
-H100 baseline is established at **0.93s** (warm). The sliding window (0.50s, 50% of total) is the only remaining bottleneck. Experiments queued on Fir cluster:
+H100 optimized result: **0.93s** warm (v0_gpu unoptimized baseline: 7.53s). The sliding window (0.50s, 54% of optimized total) is the only remaining bottleneck. Experiments queued on Fir cluster:
 
 | Technique | Expected Speedup | Status |
 |-----------|-----------------|--------|
