@@ -40,9 +40,9 @@ The sliding window stage dominates at 78.7% of total runtime — all optimizatio
 ## 3. Optimizations Applied
 
 ### 3.1 Sliding Window Overlap Reduction
-Reduce `tile_step_size` from 0.5 to 0.75, cutting 3D patch count from ~343 to ~125 (fewer forward passes).
+Reduce `tile_step_size` from 0.5 to 0.75, reducing patch overlap and the number of forward passes required.
 
-**Result:** Sliding window 2.44s → 2.22s. Patch count reduced by 64%.
+**Result:** Sliding window 2.44s → 2.22s on RTX 4070 SUPER (9% reduction).
 
 ### 3.2 Two-Level Embedding Cache
 Cache text embeddings in memory (LRU) and on disk (SHA-256 keyed .pt files). Repeated prompts skip the text backbone entirely.

@@ -90,43 +90,43 @@ plt.savefig("figures/fig2_total_logscale.png", dpi=150, bbox_inches="tight")
 plt.close()
 print("Saved: figures/fig2_total_logscale.png")
 
-# ── Figure 3: Fair GPU-vs-GPU comparison ──────────────────────────────────────
+# ── Figure 3: H100 fair algorithmic comparison ───────────────────────────────
 fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
 phases = ["Preprocessing", "Text Embedding", "Sliding Window", "Postprocessing"]
-v0_gpu = [0.13, 0.51, 2.44, 0.03]
-v3_gpu = [0.09, 0.02, 2.22, 0.03]
+v0_h100 = [0.14, 6.76, 0.51, 0.12]   # H100 unoptimized (cold embed, tile_step=0.5)
+v3_h100 = [0.20, 0.06, 0.50, 0.18]   # H100 optimized   (warm cache, tile_step=0.75)
 x2 = np.arange(len(phases))
 w2 = 0.35
 
 ax = axes[0]
-ax.bar(x2 - w2/2, v0_gpu, w2, label="v0_gpu (baseline, FP16, no cache)", color="#5B9BD5", alpha=0.9)
-ax.bar(x2 + w2/2, v3_gpu, w2, label="v3 (all optimizations)", color="#70AD47", alpha=0.9)
+ax.bar(x2 - w2/2, v0_h100, w2, label="v0_gpu (no optimizations, cold)", color="#5B9BD5", alpha=0.9)
+ax.bar(x2 + w2/2, v3_h100, w2, label="v3 (all optimizations, warm cache)", color="#70AD47", alpha=0.9)
 ax.set_xticks(x2)
 ax.set_xticklabels(phases, fontsize=9, rotation=10)
 ax.set_ylabel("Time (seconds)", fontsize=11)
-ax.set_title("Fair GPU-vs-GPU: Per-Phase", fontsize=12, fontweight="bold")
+ax.set_title("H100 Algorithmic Comparison: Per-Phase", fontsize=12, fontweight="bold")
 ax.legend(fontsize=9)
 ax.spines["top"].set_visible(False)
 ax.spines["right"].set_visible(False)
 
 ax = axes[1]
-totals_fair = [sum(v0_gpu), sum(v3_gpu)]
-labels_fair = ["v0_gpu\n(FP16, no cache\ntile=0.5)", "v3\n(all optimizations\ntile=0.75)"]
+totals_fair = [sum(v0_h100), sum(v3_h100)]
+labels_fair = ["v0_gpu\n(no optimizations\ncold embed)", "v3\n(all optimizations\nwarm cache)"]
 bar_colors_fair = ["#5B9BD5", "#70AD47"]
 bars2 = ax.bar([0, 1], totals_fair, 0.5, color=bar_colors_fair, alpha=0.9)
 for bar, total in zip(bars2, totals_fair):
-    ax.text(bar.get_x() + bar.get_width()/2, total + 0.05,
+    ax.text(bar.get_x() + bar.get_width()/2, total + 0.15,
             f"{total:.2f}s", ha="center", fontsize=12, fontweight="bold")
 ax.set_xticks([0, 1])
 ax.set_xticklabels(labels_fair, fontsize=10)
 ax.set_ylabel("Total Inference Time (seconds)", fontsize=11)
-ax.set_title(f"Fair GPU-vs-GPU: Total\n(Algorithmic speedup: {totals_fair[0]/totals_fair[1]:.2f}×)", fontsize=12, fontweight="bold")
-ax.set_ylim(0, 4.0)
+ax.set_title(f"H100 Algorithmic Comparison: Total\n(Speedup: {totals_fair[0]/totals_fair[1]:.1f}×)", fontsize=12, fontweight="bold")
+ax.set_ylim(0, 9.0)
 ax.spines["top"].set_visible(False)
 ax.spines["right"].set_visible(False)
 
-plt.suptitle("Fair GPU-vs-GPU Comparison (RTX 4070 SUPER, both FP16)", fontsize=13, fontweight="bold", y=1.02)
+plt.suptitle("Algorithmic Speedup on H100 MIG 3g.40gb (same hardware, both INT4)", fontsize=13, fontweight="bold", y=1.02)
 plt.tight_layout()
 plt.savefig("figures/fig3_fair_gpu_comparison.png", dpi=150, bbox_inches="tight")
 plt.close()
