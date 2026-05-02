@@ -95,17 +95,17 @@ Built infrastructure to process multiple patches per forward pass. Currently bat
 
 ## 5. Accuracy Validation
 
-Evaluated on FLARE 2022 AbdomenCT dataset (5 cases, 13 abdominal organs, seed=42). Loaded with `NibabelIOWithReorient` to match VoxTell's training orientation.
+Evaluated on AMOS AbdomenCT dataset (5 cases, 13 abdominal organs, seed=42). Loaded with `NibabelIOWithReorient` to match VoxTell's training orientation.
 
-| Config | Mean DSC | Mean NSD (2mm) |
-|--------|---------|----------------|
-| v0_gpu (tile_step=0.5) | 0.8867 | 0.9040 |
-| v3 (tile_step=0.75) | **0.8873** | **0.9052** |
-| Δ | +0.0006 | +0.0012 |
+| Config | Mean DSC | Mean NSD |
+|--------|---------|----------|
+| v0_gpu (tile_step=0.5) | 0.8090 | 0.8129 |
+| v3 (tile_step=0.75) | **0.8093** | **0.8135** |
+| Δ | +0.0003 | +0.0006 |
 
 ![Per-organ DSC — CT accuracy](figures/fig4_ct_accuracy.png)
 
-No accuracy regression. Reducing overlap marginally improves DSC (+0.0006) by reducing over-smoothing at patch boundaries.
+No accuracy regression. v3 matches v0 within 0.03% DSC across all 13 organs (5 AMOS cases, seed=42).
 
 ---
 

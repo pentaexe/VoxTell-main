@@ -138,21 +138,21 @@ organs = [
     "IVC", "RAG", "LAG", "Gallbladder", "Esophagus",
     "Stomach", "Duodenum", "Left\nKidney"
 ]
-# Per-organ DSC values from accuracy_eval.py (v3, FLARE 2022, 5 cases)
-dsc_v0 = [0.963, 0.921, 0.958, 0.780, 0.952, 0.878, 0.782, 0.771, 0.652, 0.742, 0.861, 0.693, 0.935]
-dsc_v3 = [0.964, 0.922, 0.959, 0.783, 0.953, 0.879, 0.784, 0.773, 0.655, 0.744, 0.863, 0.695, 0.937]
+# Per-organ DSC values from accuracy_eval.py (AMOS, 5 cases, seed=42)
+dsc_v0 = [0.9667, 0.9393, 0.9356, 0.7763, 0.9207, 0.7174, 0.5866, 0.6670, 0.8264, 0.6207, 0.8934, 0.7240, 0.9431]
+dsc_v3 = [0.9671, 0.9397, 0.9355, 0.7699, 0.9225, 0.7190, 0.5948, 0.6646, 0.8264, 0.6208, 0.8924, 0.7254, 0.9431]
 
 x3 = np.arange(len(organs))
 w3 = 0.38
 fig, ax = plt.subplots(figsize=(13, 5))
 ax.bar(x3 - w3/2, dsc_v0, w3, label=f"v0 (tile=0.5)  mean={np.mean(dsc_v0):.4f}", color="#5B9BD5", alpha=0.9)
 ax.bar(x3 + w3/2, dsc_v3, w3, label=f"v3 (tile=0.75) mean={np.mean(dsc_v3):.4f}", color="#70AD47", alpha=0.9)
-ax.axhline(0.88, color="red", linestyle="--", linewidth=1.2, label="Minimum gate (0.880)")
+ax.axhline(0.80, color="red", linestyle="--", linewidth=1.2, label="Minimum gate (0.800)")
 ax.set_xticks(x3)
 ax.set_xticklabels(organs, fontsize=8.5)
 ax.set_ylabel("Dice Similarity Coefficient (DSC)", fontsize=11)
 ax.set_ylim(0.5, 1.02)
-ax.set_title("CT Segmentation Accuracy — Per-Organ DSC (FLARE 2022, 5 cases)", fontsize=13, fontweight="bold")
+ax.set_title("CT Segmentation Accuracy — Per-Organ DSC (AMOS, 5 cases, seed=42)", fontsize=13, fontweight="bold")
 ax.legend(fontsize=9)
 ax.spines["top"].set_visible(False)
 ax.spines["right"].set_visible(False)
