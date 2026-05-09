@@ -81,7 +81,11 @@ def main():
 
         data = np.load(case_path, allow_pickle=True)
         image = data['imgs']
-        bbox = data['boxes']
+        bbox = data.get('boxes')
+
+        if bbox is None:
+            print(f"[{i+1}/{len(cases)}] SKIP (no boxes): {case_path.name}")
+            continue
 
         t0 = time.perf_counter()
         seg = predict_case(session, image, bbox)
