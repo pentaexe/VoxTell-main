@@ -40,7 +40,7 @@ def main():
             continue
 
         pred = np.load(case_path,  allow_pickle=True)['segs']
-        gt   = np.load(gt_path,    allow_pickle=True)['segs']
+        gt   = np.load(gt_path,    allow_pickle=True)['gts']
 
         labels = np.unique(gt)
         labels = labels[labels > 0]
