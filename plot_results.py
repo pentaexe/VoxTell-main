@@ -94,7 +94,7 @@ print("Saved: figures/fig2_total_logscale.png")
 fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
 phases = ["Preprocessing", "Text Embedding", "Sliding Window", "Postprocessing"]
-v0_h100 = [0.17, 10.66, 0.51, 0.23]  # H100 unoptimized (FP16, cold, tile_step=0.5)
+v0_h100 = [0.22, 1.63, 0.51, 0.18]   # H100 unoptimized (FP16, warm model, tile_step=0.5)
 v3_h100 = [0.20, 0.06, 0.50, 0.18]   # H100 optimized   (FP16, warm cache, tile_step=0.75)
 x2 = np.arange(len(phases))
 w2 = 0.35
@@ -122,7 +122,7 @@ ax.set_xticks([0, 1])
 ax.set_xticklabels(labels_fair, fontsize=10)
 ax.set_ylabel("Total Inference Time (seconds)", fontsize=11)
 ax.set_title(f"H100 Algorithmic Comparison: Total\n(Speedup: {totals_fair[0]/totals_fair[1]:.1f}×)", fontsize=12, fontweight="bold")
-ax.set_ylim(0, 14.0)
+ax.set_ylim(0, 4.0)
 ax.spines["top"].set_visible(False)
 ax.spines["right"].set_visible(False)
 
