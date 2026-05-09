@@ -21,6 +21,13 @@ DEVICE     = torch.device("cuda:0")
 _pred_module._load_disk_cache = lambda prompt, model_name: None
 _pred_module._save_disk_cache = lambda prompt, model_name, embedding: None
 
+# Force FP16 (not INT4) to match RTX 4070 SUPER baseline conditions
+from transformers import AutoModel
+_pred_module._load_text_backbone = lambda model_name, device: (
+    AutoModel.from_pretrained(model_name, torch_dtype=torch.float16).eval().to(device),
+    False
+)
+
 print(f"Device : {DEVICE}")
 print(f"GPU    : {torch.cuda.get_device_name(0)}")
 print(f"Prompts: {PROMPTS}")
