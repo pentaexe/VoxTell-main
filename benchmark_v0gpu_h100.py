@@ -1,7 +1,12 @@
 """
 VoxTell v0_gpu Baseline Benchmark — H100
-Runs the unoptimized pipeline (tile_step=0.5, no cache, cold embed)
+Runs the unoptimized pipeline (tile_step=0.5, no cache, warm model)
 to establish a fair H100 baseline for algorithmic speedup comparison.
+
+Phase 2 measures the TEXT BACKBONE FORWARD PASS only (model already in GPU
+memory), matching how the RTX 4070 SUPER baseline was measured.  The first
+embed call (which loads the model from Lustre) is reported separately as
+"model load time" and is NOT included in the baseline total.
 """
 import time
 import torch
@@ -31,7 +36,7 @@ _pred_module._load_text_backbone = lambda model_name, device: (
 print(f"Device : {DEVICE}")
 print(f"GPU    : {torch.cuda.get_device_name(0)}")
 print(f"Prompts: {PROMPTS}")
-print("Config : tile_step=0.5, NO cache (v0_gpu baseline)\n")
+print("Config : tile_step=0.5, NO cache, warm model (v0_gpu baseline)\n")
 
 # ── Load image ────────────────────────────────────────────────────────────────
 t0 = time.perf_counter()
@@ -55,10 +60,21 @@ torch.cuda.synchronize()
 t_preprocess = time.perf_counter() - t0
 print(f"  Shape : {data.shape}  |  Time: {t_preprocess:.3f}s")
 
-# ── Phase 2: Text embedding (cold — cache disabled) ───────────────────────────
-print("\n[Phase 2] Text embedding (cold, no cache)...")
+# ── Phase 2: Text embedding ───────────────────────────────────────────────────
+# Step 2a: first call loads the text backbone from Lustre into GPU memory.
+# This is a one-time startup cost, NOT part of per-image inference time.
+print("\n[Phase 2a] Loading text backbone (first call, Lustre → GPU)...")
 t0 = time.perf_counter()
+embeddings = predictor.embed_text_prompts(PROMPTS)
+t_model_load = time.perf_counter() - t0
+print(f"  Model load + forward pass: {t_model_load:.3f}s  (one-time, not counted in baseline)")
+
+# Step 2b: clear embed cache, re-run with model warm in GPU memory.
+# This matches the RTX 4070 SUPER baseline (forward pass only).
+predictor._embed_cache.clear()
+print("\n[Phase 2b] Text embedding (model warm, no cache — forward pass only)...")
 torch.cuda.synchronize()
+t0 = time.perf_counter()
 embeddings = predictor.embed_text_prompts(PROMPTS)
 torch.cuda.synchronize()
 t_embed = time.perf_counter() - t0
@@ -102,8 +118,9 @@ print("\n" + "=" * 60)
 print("v0_gpu BASELINE — H100 MIG 3g.40gb")
 print("=" * 60)
 print(f"  Preprocessing : {t_preprocess:.3f}s")
-print(f"  Text embedding: {t_embed:.3f}s  (cold)")
+print(f"  Text embedding: {t_embed:.3f}s  (FP16, forward pass, model warm)")
 print(f"  Sliding window: {t_inference:.3f}s  ({len(slicers)} patches, tile_step=0.5)")
 print(f"  Postprocessing: {t_postprocess:.3f}s")
 print(f"  TOTAL         : {t_total:.3f}s")
+print(f"\n  [Info] One-time model load from Lustre: {t_model_load:.3f}s (not counted)")
 print("=" * 60)

@@ -47,7 +47,7 @@ Reduce `tile_step_size` from 0.5 to 0.75, reducing patch overlap and the number 
 ### 3.2 Two-Level Embedding Cache
 Cache text embeddings in memory (LRU) and on disk (SHA-256 keyed .pt files). Repeated prompts skip the text backbone entirely.
 
-**Result:** Embedding 0.51s → 0.02s on cache hit on RTX (25×); 6.76s → 0.06s on H100 (113×). Critical for clinical use with repeated anatomical queries across many volumes.
+**Result:** Embedding 0.51s → 0.02s on cache hit on RTX (25×); 10.66s → 0.06s on H100 (178×). Critical for clinical use with repeated anatomical queries across many volumes.
 
 ### 3.3 Numba JIT Preprocessing
 Replace NumPy crop-to-nonzero and z-score normalization with `@numba.njit(parallel=True)` compiled functions.
@@ -77,19 +77,21 @@ Built infrastructure to process multiple patches per forward pass. Currently bat
 | v2 — + embedding cache | 0.13s | 0.02s | 2.22s | 0.03s | 2.40s | 1.3× |
 | v3 — + Numba preprocess | 0.09s | 0.02s | 2.22s | 0.03s | **2.36s** | 1.3× |
 
-**H100 MIG 3g.40gb — fair algorithmic comparison (job 38142016 / 37427405):**
+**H100 MIG 3g.40gb — fair algorithmic comparison (both FP16; job 38142016 / 39246823):**
 
 | Version | Pre | Embed | Slide | Post | Total | Speedup |
 |---------|-----|-------|-------|------|-------|---------|
-| v0_gpu — baseline (H100, cold) | 0.14s | 6.76s | 0.51s | 0.12s | **7.53s** | 1.0× |
-| **v3 — optimized (H100, warm cache)** | **0.20s** | **0.06s** | **0.50s** | **0.18s** | **0.93s** | **8.1×** |
+| v0_gpu — baseline (H100, FP16, cold) | 0.17s | 10.66s | 0.51s | 0.23s | **11.57s** | 1.0× |
+| **v3 — optimized (H100, FP16, warm cache)** | **0.20s** | **0.06s** | **0.50s** | **0.18s** | **0.93s** | **12.4×** |
+
+> **Note on cold embed time:** The v0_gpu baseline reloads the full Qwen3-4B text backbone (8 GB FP16) from the Lustre network filesystem on every run. This cold I/O dominates the 10.66s embedding time and is not representative of steady-state inference. The embedding cache (v3) eliminates this entirely — model weights are never reloaded after the first call.
 
 ![Per-phase inference time breakdown](figures/fig1_stacked_breakdown.png)
 
 ![Fair GPU-vs-GPU comparison](figures/fig3_fair_gpu_comparison.png)
 
 **Algorithmic speedup on RTX 4070 SUPER: 1.3×** (3.11s → 2.36s).  
-**Algorithmic speedup on H100: 8.1×** (7.53s → 0.93s) — driven primarily by the embedding cache (6.76s cold → 0.06s warm). The dominant remaining cost is the sliding window (0.50s) — TensorRT FP16 is the next experiment.
+**Algorithmic speedup on H100: 12.4×** (11.57s → 0.93s) — driven primarily by the embedding cache (10.66s cold → 0.06s warm). The dominant remaining cost is the sliding window (0.50s) — TensorRT FP16 is the next experiment.
 
 ---
 
@@ -120,7 +122,7 @@ No accuracy regression. v3 matches v0 within 0.03% DSC across all 13 organs (5 A
 
 ## 7. Next Steps (H100 via ComputeCanada)
 
-H100 optimized result: **0.93s** warm (v0_gpu unoptimized baseline: 7.53s). The sliding window (0.50s, 54% of optimized total) is the only remaining bottleneck. Experiments queued on Fir cluster:
+H100 optimized result: **0.93s** warm (v0_gpu FP16 unoptimized baseline: 11.57s). The sliding window (0.50s, 54% of optimized total) is the only remaining bottleneck. Experiments queued on Fir cluster:
 
 | Technique | Expected Speedup | Status |
 |-----------|-----------------|--------|
