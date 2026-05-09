@@ -138,7 +138,23 @@ H100 optimized result: **0.93s** (v0_gpu baseline: 2.54s, 2.7× speedup). The sl
 
 ---
 
-## 8. Generalization — AutoResearch Framework
+## 8. nnInteractive Baseline — CVPR BiomedSegFM CT Validation
+
+Evaluated nnInteractive v1.0 (`fold_all` checkpoint, same as Dr. Ma's baseline Docker) on the CVPR BiomedSegFM CT validation set using bounding-box prompts only (first interaction round, no click refinements).
+
+| Metric | Value |
+|--------|-------|
+| Cases evaluated | 881 / 905 CT (24 skipped — click-only prompts) |
+| Objects evaluated | 8,619 |
+| **Mean DSC** | **0.7794** |
+| Median DSC | 0.8596 |
+| Std DSC | 0.2270 |
+
+The gap between mean (0.7794) and median (0.8596) reflects challenging small-structure cases (tumors, vessels) that drag down the mean. Full interactive evaluation with 5 click refinement rounds would improve scores substantially.
+
+---
+
+## 9. Generalization — AutoResearch Framework
 
 The optimization approach has been formalized as a model-agnostic framework (`autoresearch_prompt.md`) applicable to any sliding-window segmentation model. It defines:
 
