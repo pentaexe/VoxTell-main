@@ -19,7 +19,7 @@ import voxtell.inference.predictor as _pred_module
 import os
 IMAGE_PATH = "/scratch/brianx7/mni_icbm152_t1_tal_nlin_sym_09a.nii.gz"
 MODEL_DIR  = "/scratch/brianx7/VoxTell-main/models/voxtell_v1.1"
-PROMPTS    = ["brain", "left hemisphere"]
+PROMPTS    = ["brain"]
 DEVICE     = torch.device("cuda:0")
 
 # Disable disk cache so embed is always cold

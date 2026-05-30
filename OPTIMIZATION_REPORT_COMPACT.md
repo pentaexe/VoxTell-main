@@ -2,7 +2,7 @@
 
 **Date:** April 2026  
 **Author:** Brian Xiao  
-**Hardware:** NVIDIA RTX 4070 SUPER (12 GB VRAM) · NVIDIA H100 MIG 3g.40gb (ComputeCanada Fir) · PyTorch 2.8.0, CUDA 12.6  
+**Hardware:** NVIDIA RTX 4070 SUPER (12 GB VRAM, PyTorch 2.8.0, CUDA 12.6) · NVIDIA H100 MIG 3g.40gb (ComputeCanada Fir, PyTorch 2.6.0, CUDA 12.2)  
 **Model:** VoxTell v1.1 — Free-Text Promptable 3D Medical Image Segmentation (CVPR 2026)  
 **Objective:** Minimize end-to-end GPU inference latency without accuracy regression  
 
