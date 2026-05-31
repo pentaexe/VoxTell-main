@@ -42,7 +42,7 @@ With a warm model and no caching, text embedding dominates at 67% of runtime —
 ### 3.1 Sliding Window Overlap Reduction
 Reduce `tile_step_size` from 0.5 to 0.75, reducing patch overlap and the number of forward passes required.
 
-**Result:** Sliding window 2.44s → 2.22s on RTX 4070 SUPER (9% reduction).
+**Result:** Sliding window 0.94s → 0.82s on RTX 4070 SUPER (13% reduction, 1 prompt).
 
 ### 3.2 Two-Level Embedding Cache
 Cache text embeddings in memory (LRU) and on disk (SHA-256 keyed .pt files). Repeated prompts skip the text backbone entirely.
@@ -68,35 +68,33 @@ Built infrastructure to process multiple patches per forward pass. Currently bat
 
 ## 4. Results
 
-**RTX 4070 SUPER — v0_gpu baseline (1 prompt, FP16, warm model):**
-
-| Phase | Time |
-|-------|------|
-| Preprocessing | 0.09s |
-| Text embedding | 2.17s |
-| Sliding window | 0.94s |
-| Postprocessing | 0.02s |
-| **Total** | **3.22s** |
-
-> Note: v1/v2/v3 optimization progression on RTX was benchmarked with 2 prompts (embedding measured as disk-cache hit). Those numbers are internally consistent for showing algorithmic speedup but are not directly comparable to the 1-prompt H100 table below.
-
-**H100 MIG 3g.40gb — fair algorithmic comparison (both FP16, model warm, 1 prompt; job 42358585 / 42360026):**
+**RTX 4070 SUPER — algorithmic optimization (1 prompt, FP16, warm model):**
 
 | Version | Pre | Embed | Slide | Post | Total | Speedup |
 |---------|-----|-------|-------|------|-------|---------|
-| v0_gpu — baseline (H100, FP16) | 0.14s | 1.63s | 0.39s | 0.11s | **2.27s** | 1.0× |
-| **v3 — optimized (H100, warm cache)** | **0.14s** | **0.04s** | **0.39s** | **0.02s** | **0.60s** | **3.8×** |
+| v0_gpu — baseline | 0.09s | 2.17s | 0.94s | 0.02s | **3.22s** | 1.0× |
+| **v3 — optimized (warm cache, tile=0.75)** | **0.09s** | **0.02s** | **0.82s** | **0.02s** | **0.95s** | **3.4×** |
 
-> **Note — one-time model load:** The first inference call loads the 8 GB FP16 Qwen3-4B backbone from Lustre (~7.5s). This is a one-time startup cost identical to any production deployment and is not counted in per-image latency above.
+**H100 MIG 3g.40gb — algorithmic optimization (1 prompt, FP16, warm model; job 42358585 / 42360026):**
 
-> **Note — H100 MIG embedding vs RTX:** The H100 MIG 3g.40gb partition has ~57 active SMs — similar to the RTX 4070 SUPER's 56 SMs — so short-sequence transformer inference shows no speedup over RTX. The H100 advantage is in the sliding window (0.39s vs 2.44s, 6.3×) where large 3D convolutions saturate the available Tensor Cores.
+| Version | Pre | Embed | Slide | Post | Total | Speedup |
+|---------|-----|-------|-------|------|-------|---------|
+| v0_gpu — baseline | 0.14s | 1.63s | 0.39s | 0.11s | **2.27s** | 1.0× |
+| **v3 — optimized (warm cache, tile=0.75)** | **0.14s** | **0.04s** | **0.39s** | **0.02s** | **0.60s** | **3.8×** |
+
+> **Note — one-time model load:** The first inference call loads the 8 GB FP16 Qwen3-4B backbone from disk (~7.5s on Lustre). This is a one-time startup cost not counted in per-image latency above.
+
+> **Note — H100 MIG embedding vs RTX:** The H100 MIG 3g.40gb partition has ~57 active SMs — similar to RTX 4070 SUPER's 56 SMs — so short-sequence transformer inference is comparable between GPUs (1.63s vs 2.17s). H100 dominates on the sliding window (0.39s vs 0.94s, 2.4×) where 3D convolutions scale with SM count.
+
+> **Note — H100 preprocessing:** Numba JIT preprocessing (section 3.3) improves RTX preprocessing on the local CPU. The cluster CPU shows no improvement (0.14s both versions), which is expected since server CPUs have different per-core performance characteristics.
 
 ![Per-phase inference time breakdown](figures/fig1_stacked_breakdown.png)
 
 ![Fair GPU-vs-GPU comparison](figures/fig3_fair_gpu_comparison.png)
 
-**Algorithmic speedup on H100: 3.8×** (2.27s → 0.60s) — driven by the embedding cache (2.17s → 0.04s) and tile_step overlap reduction.  
-**H100 hardware advantage over RTX (both 1 prompt, warm model):** 2.27s vs 3.22s baseline (1.4×); H100 is faster on all GPU-bound phases (embed: 1.63s vs 2.17s; slide: 0.39s vs 0.94s).
+**Algorithmic speedup on RTX 4070 SUPER: 3.4×** (3.22s → 0.95s).  
+**Algorithmic speedup on H100: 3.8×** (2.27s → 0.60s) — driven primarily by the embedding cache.  
+**H100 hardware advantage over RTX (both 1 prompt, v3):** 0.60s vs 0.95s (1.6×).
 
 ---
 
