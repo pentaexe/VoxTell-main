@@ -52,7 +52,7 @@ Cache text embeddings in memory (LRU) and on disk (SHA-256 keyed .pt files). Rep
 ### 3.3 Numba JIT Preprocessing
 Replace NumPy crop-to-nonzero and z-score normalization with `@numba.njit(parallel=True)` compiled functions.
 
-**Result:** Preprocessing 0.13s → 0.09s (1.4×).
+**Result:** Negligible improvement in 1-prompt benchmarks (0.09s both versions on RTX; 0.14s both on H100 cluster CPU). More significant on larger images or multi-prompt workloads.
 
 ### 3.4 INT4 Quantization Loader
 Load text backbone weights in 4-bit NF4 using `bitsandbytes`, reducing VRAM footprint from ~8 GB to ~2 GB.
@@ -125,7 +125,7 @@ No accuracy regression. v3 matches v0 within 0.03% DSC across all 13 organs (5 A
 
 ## 7. Next Steps (H100 via ComputeCanada)
 
-H100 optimized result: **0.60s** (v0_gpu baseline: 2.27s, 3.8× speedup). The sliding window (0.39s, 65% of optimized total) is the only remaining bottleneck. Experiments queued on Fir cluster:
+H100 optimized result: **0.55s** (v0_gpu baseline: 2.27s, 4.1× speedup). The sliding window (0.39s, 71% of optimized total) is the only remaining bottleneck. Experiments queued on Fir cluster:
 
 | Technique | Expected Speedup | Status |
 |-----------|-----------------|--------|
@@ -134,7 +134,7 @@ H100 optimized result: **0.60s** (v0_gpu baseline: 2.27s, 3.8× speedup). The sl
 | Batched patches (batch_size=4) | 1.3–1.8× | Queued — 40 GB VRAM available |
 | Flash Attention (MaskFormer decoder) | 1.2–2.0× | Queued — CUDA 11.6+ on H100 |
 
-**Target:** ≤ 0.5s end-to-end latency (warm) on H100. Current: **0.93s** (job 37427405). TensorRT alone is expected to reach this target.
+**Target:** ≤ 0.5s end-to-end latency (warm) on H100. Current: **0.55s** (job 42360026). TensorRT alone is expected to reach this target.
 
 ---
 
