@@ -47,7 +47,7 @@ Reduce `tile_step_size` from 0.5 to 0.75, reducing patch overlap and the number 
 ### 3.2 Two-Level Embedding Cache
 Cache text embeddings in memory (LRU) and on disk (SHA-256 keyed .pt files). Repeated prompts skip the text backbone entirely.
 
-**Result:** Embedding 2.17s → 0.02s on cache hit on RTX (109×); 1.63s → 0.04s on H100 (41×). Critical for clinical use with repeated anatomical queries across many volumes.
+**Result:** Embedding 2.17s → <0.001s on in-memory cache hit (>2000×). The cache stores the computed embedding tensor (~5 KB) in CPU RAM as an LRU dict — lookup is a Python dict get + GPU memcpy, essentially free. A disk cache layer also persists embeddings across sessions (0.02s on NVMe SSD, 0.04s on Lustre). Critical for clinical use with repeated anatomical queries across many volumes.
 
 ### 3.3 Numba JIT Preprocessing
 Replace NumPy crop-to-nonzero and z-score normalization with `@numba.njit(parallel=True)` compiled functions.
@@ -73,14 +73,14 @@ Built infrastructure to process multiple patches per forward pass. Currently bat
 | Version | Pre | Embed | Slide | Post | Total | Speedup |
 |---------|-----|-------|-------|------|-------|---------|
 | v0_gpu — baseline | 0.09s | 2.17s | 0.94s | 0.02s | **3.22s** | 1.0× |
-| **v3 — optimized (warm cache, tile=0.75)** | **0.09s** | **0.02s** | **0.82s** | **0.02s** | **0.95s** | **3.4×** |
+| **v3 — optimized (warm cache, tile=0.75)** | **0.09s** | **<0.001s** | **0.82s** | **0.02s** | **0.93s** | **3.5×** |
 
 **H100 MIG 3g.40gb — algorithmic optimization (1 prompt, FP16, warm model; job 42358585 / 42360026):**
 
 | Version | Pre | Embed | Slide | Post | Total | Speedup |
 |---------|-----|-------|-------|------|-------|---------|
 | v0_gpu — baseline | 0.14s | 1.63s | 0.39s | 0.11s | **2.27s** | 1.0× |
-| **v3 — optimized (warm cache, tile=0.75)** | **0.14s** | **0.04s** | **0.39s** | **0.02s** | **0.60s** | **3.8×** |
+| **v3 — optimized (warm cache, tile=0.75)** | **0.14s** | **<0.001s** | **0.39s** | **0.02s** | **0.55s** | **4.1×** |
 
 > **Note — one-time model load:** The first inference call loads the 8 GB FP16 Qwen3-4B backbone from disk (~7.5s on Lustre). This is a one-time startup cost not counted in per-image latency above.
 
@@ -92,9 +92,9 @@ Built infrastructure to process multiple patches per forward pass. Currently bat
 
 ![Fair GPU-vs-GPU comparison](figures/fig3_fair_gpu_comparison.png)
 
-**Algorithmic speedup on RTX 4070 SUPER: 3.4×** (3.22s → 0.95s).  
-**Algorithmic speedup on H100: 3.8×** (2.27s → 0.60s) — driven primarily by the embedding cache.  
-**H100 hardware advantage over RTX (both 1 prompt, v3):** 0.60s vs 0.95s (1.6×).
+**Algorithmic speedup on RTX 4070 SUPER: 3.5×** (3.22s → 0.93s).  
+**Algorithmic speedup on H100: 4.1×** (2.27s → 0.55s) — driven primarily by the in-memory embedding cache (<0.001s hit).  
+**H100 hardware advantage over RTX (both 1 prompt, v3):** 0.55s vs 0.93s (1.7×).
 
 ---
 
