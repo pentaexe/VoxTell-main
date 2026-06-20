@@ -6,6 +6,8 @@ Usage:
     python plot_results.py
 """
 
+import matplotlib
+matplotlib.use('Agg')
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
@@ -13,11 +15,11 @@ from pathlib import Path
 
 Path("figures").mkdir(exist_ok=True)
 
-VERSIONS = ["v0_gpu\n(baseline)", "v1\ntile=0.75", "v2\n+Cache", "v3\n+Numba"]
-PRE   = [0.13, 0.13, 0.13, 0.09]
-EMBED = [0.51, 0.51, 0.02, 0.02]
-SLIDE = [2.44, 2.22, 2.22, 2.22]
-POST  = [0.03, 0.03, 0.03, 0.03]
+VERSIONS = ["v0_gpu\n(baseline)", "v3\noptimized"]
+PRE   = [0.09, 0.09]
+EMBED = [2.17, 0.001]
+SLIDE = [0.94, 0.82]
+POST  = [0.02, 0.02]
 TOTALS = [p+e+s+po for p,e,s,po in zip(PRE, EMBED, SLIDE, POST)]
 
 COLORS = {
@@ -44,9 +46,9 @@ for i, total in enumerate(TOTALS):
 ax.set_xticks(x)
 ax.set_xticklabels(VERSIONS, fontsize=10)
 ax.set_ylabel("Inference Time (seconds)", fontsize=12)
-ax.set_title("VoxTell Inference Time — Per-Phase Breakdown by Optimization Version", fontsize=13, fontweight="bold")
+ax.set_title("VoxTell Inference Time — Per-Phase Breakdown (RTX 4070 SUPER, 1 prompt, FP16)", fontsize=13, fontweight="bold")
 ax.legend(loc="upper right", fontsize=10)
-ax.set_ylim(0, 4.5)
+ax.set_ylim(0, 4.0)
 ax.spines["top"].set_visible(False)
 ax.spines["right"].set_visible(False)
 
@@ -74,7 +76,7 @@ for bar, total in zip(bars, TOTALS):
 ax.set_xticks(x)
 ax.set_xticklabels(VERSIONS, fontsize=10)
 ax.set_ylabel("Total Inference Time (seconds)", fontsize=12)
-ax.set_title("Total Inference Time — GPU Baseline to Optimized", fontsize=13, fontweight="bold")
+ax.set_title("Total Inference Time — RTX 4070 SUPER (1 prompt, FP16)", fontsize=13, fontweight="bold")
 ax.set_ylim(0, 4.0)
 ax.spines["top"].set_visible(False)
 ax.spines["right"].set_visible(False)

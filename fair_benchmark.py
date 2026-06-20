@@ -13,7 +13,6 @@ measured on CPU (silent VRAM overflow in FP32) which is an unfair comparison.
 
 import time
 import pydoc
-import hashlib
 import torch
 import numpy as np
 from pathlib import Path
@@ -29,9 +28,16 @@ from voxtell.model.voxtell_model import VoxTellModel
 from voxtell.utils.text_embedding import last_token_pool, wrap_with_instruction
 from voxtell.utils.fast_preprocess import numba_crop_to_nonzero, numpy_zscore_normalize
 
-IMAGE_PATH = r"C:\Users\brian\nilearn_data\icbm152_2009\mni_icbm152_nlin_sym_09a\mni_icbm152_t1_tal_nlin_sym_09a.nii.gz"
-MODEL_DIR  = "models/voxtell_v1.1"
-PROMPTS    = ["brain", "left hemisphere"]
+import os
+_DEFAULT_IMAGE = r"C:\Users\brian\Downloads\mni_icbm152_t1_tal_nlin_sym_09a.nii.gz"
+_CLUSTER_IMAGE = "/scratch/brianx7/mni_icbm152_t1_tal_nlin_sym_09a.nii.gz"
+IMAGE_PATH = _CLUSTER_IMAGE if os.path.exists(_CLUSTER_IMAGE) else _DEFAULT_IMAGE
+
+_DEFAULT_MODEL = r"C:\Users\brian\OneDrive\Desktop\Code\VoxTell-main\models\voxtell_v1.1"
+_CLUSTER_MODEL = "/scratch/brianx7/VoxTell-main/models/voxtell_v1.1"
+MODEL_DIR  = _CLUSTER_MODEL if os.path.exists(_CLUSTER_MODEL) else _DEFAULT_MODEL
+
+PROMPTS    = ["brain"]
 DEVICE     = torch.device("cuda:0")
 TEXT_MODEL = "Qwen/Qwen3-Embedding-4B"
 

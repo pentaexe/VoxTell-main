@@ -1,16 +1,20 @@
 """
 VoxTell Predictor — optimized inference pipeline.
 
-Optimization history
+Benchmark results (1 prompt, FP16, warm model)
+-----------------------------------------------
+                    RTX 4070 SUPER   H100 MIG 3g.40gb
+v0_gpu (baseline)      3.22 s           2.27 s
+v3     (optimized)     0.93 s           0.55 s
+Speedup                3.5×             4.1×
+
+Optimizations in v3
 --------------------
-v0  Original         : 145.25s  (FP32 text model on CPU, tile_step=0.5)
-v1  FP16 + VRAM mgmt : 8.06s    (FP16 on GPU, VRAM swap, tile_step=0.75)
-v2  GPU preprocess
-    + disk cache     : 5.93s    (CUDA crop/norm, persistent embed cache)
-v3  Numba preprocess
-    + INT4 quant
-    + batched window : 5.58s   (LLVM native code, 4-bit text model, batch=N patches)
-v4  CT preprocessing fix: modality-aware z-score (CT=all voxels, MRI=nonzero only)
+1. tile_step_size=0.75  — 25% patch overlap (fewer forward passes)
+2. Two-level embed cache — in-memory LRU + disk (SHA-256 keyed .pt files)
+3. Numba JIT preprocess  — LLVM-compiled bbox search
+4. INT4 quantization     — bitsandbytes NF4 (~2GB vs ~8GB FP16 VRAM)
+5. Batched sliding window — N patches per forward pass (batch_size=1 currently)
 """
 
 import hashlib
@@ -89,17 +93,7 @@ def _load_text_backbone(model_name: str, device: torch.device):
 
 
 class VoxTellPredictor:
-    """
-    Optimized VoxTell predictor.
-
-    Three-level optimizations applied
-    ----------------------------------
-    1. Numba JIT preprocessing   — LLVM-compiled native bbox search + NumPy C normalize
-    2. INT4 text backbone        — bitsandbytes NF4 (2GB vs 8GB FP16); GPU-resident
-    3. Batched sliding window    — N patches per forward pass instead of 1
-    4. Two-level embedding cache — in-memory dict + persistent disk (SHA256-keyed)
-    5. tile_step_size = 0.75     — 25% overlap, fewer patches
-    """
+    """Optimized VoxTell v3 predictor — see module docstring for benchmark results."""
 
     def __init__(
         self,

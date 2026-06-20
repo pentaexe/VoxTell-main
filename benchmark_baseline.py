@@ -1,6 +1,12 @@
 """
 VoxTell Inference Benchmark
-Measures per-phase timing and compares against recorded baselines.
+Measures per-phase timing for the current v3 optimized predictor and
+compares against recorded baselines (1 prompt, FP16, warm model).
+
+For reproducible baselines see:
+  benchmark_rtx_1prompt.py  — RTX v0_gpu baseline
+  benchmark_rtx_v3.py       — RTX v3 optimized
+  benchmark_v0gpu_h100.py   — H100 baseline (cluster only)
 """
 import time
 import torch
@@ -17,25 +23,25 @@ IMAGE_PATH = _CLUSTER_IMAGE if os.path.exists(_CLUSTER_IMAGE) else _DEFAULT_IMAG
 _DEFAULT_MODEL = r"C:\Users\brian\OneDrive\Desktop\Code\VoxTell-main\models\voxtell_v1.1"
 _CLUSTER_MODEL = "/scratch/brianx7/VoxTell-main/models/voxtell_v1.1"
 MODEL_DIR = _CLUSTER_MODEL if os.path.exists(_CLUSTER_MODEL) else _DEFAULT_MODEL
-PROMPTS    = ["brain", "left hemisphere"]
+PROMPTS    = ["brain"]
 DEVICE     = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-# ── Recorded baselines for comparison ────────────────────────────────────────
+# ── Recorded baselines (1 prompt, FP16, warm model, RTX 4070 SUPER) ──────────
 CHANGELOG = [
     {
         "version": "v0_gpu — GPU baseline",
-        "changes": "FP16 text model on GPU, tile_step=0.5, no cache (RTX 4070 SUPER)",
-        "preprocess": 0.13, "text_embed": 0.51, "sliding": 2.44, "postprocess": 0.03,
+        "changes": "FP16, tile_step=0.5, no cache",
+        "preprocess": 0.09, "text_embed": 2.17, "sliding": 0.94, "postprocess": 0.02,
     },
     {
         "version": "v1 — tile_step=0.75",
-        "changes": "Reduce overlap: tile_step_size 0.5→0.75, fewer patches",
-        "preprocess": 0.13, "text_embed": 0.51, "sliding": 2.22, "postprocess": 0.03,
+        "changes": "Reduce overlap: fewer patches",
+        "preprocess": 0.09, "text_embed": 2.17, "sliding": 0.82, "postprocess": 0.02,
     },
     {
-        "version": "v2 — + embedding cache",
-        "changes": "2-level embed cache (memory LRU + disk SHA-256)",
-        "preprocess": 0.13, "text_embed": 0.02, "sliding": 2.22, "postprocess": 0.03,
+        "version": "v3 — + embed cache + Numba",
+        "changes": "In-memory LRU cache + Numba JIT preprocess",
+        "preprocess": 0.09, "text_embed": 0.001, "sliding": 0.82, "postprocess": 0.02,
     },
 ]
 
@@ -51,7 +57,7 @@ t_load = time.perf_counter() - t0
 print(f"Image loaded: {img.shape}  ({t_load:.2f}s)\n")
 
 # ── Load model ────────────────────────────────────────────────────────────────
-print("Loading model (torch.compile adds ~30s on first load)...")
+print("Loading model...")
 t0 = time.perf_counter()
 predictor = VoxTellPredictor(model_dir=MODEL_DIR, device=DEVICE)
 t_model = time.perf_counter() - t0
