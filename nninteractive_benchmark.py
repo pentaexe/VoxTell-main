@@ -120,6 +120,8 @@ def main():
                         help='Directory containing CT_*.npz validation cases')
     parser.add_argument('--case', default=None,
                         help='Specific .npz filename to benchmark (default: first found)')
+    parser.add_argument('--skip_compile', action='store_true',
+                        help='Skip the torch.compile comparison (saves ~1h of kernel compilation)')
     args = parser.parse_args()
 
     input_dir = Path(args.input_dir)
@@ -152,31 +154,39 @@ def main():
     torch.cuda.empty_cache()
 
     # ── torch.compile (Triton available on H100) ──────────────────────────────
-    print("\nLoading session (torch.compile=True)...")
-    t0 = time.perf_counter()
-    session_compiled = load_session(use_torch_compile=True)
-    print(f"Model loaded in {time.perf_counter() - t0:.1f}s  "
-          f"(includes compile warmup)")
+    if not args.skip_compile:
+        print("\nLoading session (torch.compile=True)...")
+        t0 = time.perf_counter()
+        session_compiled = load_session(use_torch_compile=True)
+        print(f"Model loaded in {time.perf_counter() - t0:.1f}s  "
+              f"(includes compile warmup)")
 
-    t_set_v1, t_pred_v1 = run_benchmark(session_compiled, image, bbox_list,
-                                          "torch.compile (use_torch_compile=True)")
-    del session_compiled
-    torch.cuda.empty_cache()
+        t_set_v1, t_pred_v1 = run_benchmark(session_compiled, image, bbox_list,
+                                              "torch.compile (use_torch_compile=True)")
+        del session_compiled
+        torch.cuda.empty_cache()
 
-    # ── Summary ───────────────────────────────────────────────────────────────
-    print(f"\n{'='*60}")
-    print("SUMMARY")
-    print(f"{'='*60}")
-    print(f"{'':30s} {'Baseline':>10} {'torch.compile':>14} {'Speedup':>8}")
-    print(f"{'─'*60}")
-    print(f"{'set_image':30s} {t_set_v0:>9.3f}s {t_set_v1:>13.3f}s "
-          f"{t_set_v0/t_set_v1:>7.2f}×")
-    print(f"{'_predict (1 object)':30s} {t_pred_v0:>9.3f}s {t_pred_v1:>13.3f}s "
-          f"{t_pred_v0/t_pred_v1:>7.2f}×")
-    print(f"{'Total (1 object)':30s} {t_set_v0+t_pred_v0:>9.3f}s "
-          f"{t_set_v1+t_pred_v1:>13.3f}s "
-          f"{(t_set_v0+t_pred_v0)/(t_set_v1+t_pred_v1):>7.2f}×")
-    print(f"{'='*60}")
+        print(f"\n{'='*60}")
+        print("SUMMARY")
+        print(f"{'='*60}")
+        print(f"{'':30s} {'Baseline':>10} {'torch.compile':>14} {'Speedup':>8}")
+        print(f"{'─'*60}")
+        print(f"{'set_image':30s} {t_set_v0:>9.3f}s {t_set_v1:>13.3f}s "
+              f"{t_set_v0/t_set_v1:>7.2f}×")
+        print(f"{'_predict (1 object)':30s} {t_pred_v0:>9.3f}s {t_pred_v1:>13.3f}s "
+              f"{t_pred_v0/t_pred_v1:>7.2f}×")
+        print(f"{'Total (1 object)':30s} {t_set_v0+t_pred_v0:>9.3f}s "
+              f"{t_set_v1+t_pred_v1:>13.3f}s "
+              f"{(t_set_v0+t_pred_v0)/(t_set_v1+t_pred_v1):>7.2f}×")
+        print(f"{'='*60}")
+    else:
+        print(f"\n{'='*60}")
+        print("BASELINE RESULTS")
+        print(f"{'='*60}")
+
+    print(f"\n  set_image  : {t_set_v0:.3f}s")
+    print(f"  _predict   : {t_pred_v0:.3f}s  (1 object, mean of {N_TIMED} runs)")
+    print(f"  Total      : {t_set_v0+t_pred_v0:.3f}s")
     print(f"\nBottleneck: "
           f"{'set_image' if t_set_v0 > t_pred_v0 else '_predict'} dominates "
           f"({'%.0f' % (max(t_set_v0,t_pred_v0)/(t_set_v0+t_pred_v0)*100)}% of total)")

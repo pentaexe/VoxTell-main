@@ -7,7 +7,10 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --time=0:30:00
 
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate voxtell
+
 cd /scratch/brianx7/VoxTell-main
 
 python -u nninteractive_benchmark.py \
-    --input_dir /scratch/brianx7/cvpr_val/3D_val_CT
+    --input_dir /scratch/brianx7/cvpr_val/3D_val_npz
