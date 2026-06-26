@@ -8,6 +8,9 @@
 
 source /scratch/brianx7/envs/nninteractive/bin/activate
 
+export TORCH_HOME=/scratch/brianx7/torch_home
+export XDG_CACHE_HOME=/scratch/brianx7/cache
+
 cd /scratch/brianx7/VoxTell-main
 
 python -u nninteractive_benchmark.py \
