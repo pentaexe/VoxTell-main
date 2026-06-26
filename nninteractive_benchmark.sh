@@ -6,7 +6,7 @@
 #SBATCH --ntasks=1
 #SBATCH --time=3:00:00
 
-source ~/envs/nninteractive/bin/activate
+source /scratch/brianx7/envs/nninteractive/bin/activate
 
 cd /scratch/brianx7/VoxTell-main
 
