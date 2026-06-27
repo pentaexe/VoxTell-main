@@ -2,23 +2,31 @@
 nnInteractive Inference Benchmark — H100 MIG 3g.40gb
 =====================================================
 Profiles per-phase latency to identify optimization targets.
-Mirrors the VoxTell benchmark structure for direct comparison.
 
 Phases timed
 ------------
   Phase 1: set_image  — preprocessing + image encoding (once per case)
   Phase 2: _predict   — network inference per object (one bbox prompt)
 
+Baseline results (fold=0, no autozoom, warm model, H100 MIG 3g.40gb)
+----------------------------------------------------------------------
+  set_image : 0.345s   (once per case)
+  _predict  : 0.107s   (per object, mean of 3 warm runs)
+  cold start: ~4.1s    (first _predict call only — CUDA kernel compilation)
+
+  For a 15-object case: 0.345 + 15 × 0.107 ≈ 1.95s
+
 Results are used to decide which optimizations to pursue:
-  - If set_image dominates → optimize preprocessing / image encoder
-  - If _predict dominates  → optimize sliding window (torch.compile, TensorRT, batch)
+  - set_image (0.345s) is NOT the bottleneck
+  - _predict (0.107s warm, 4.1s cold) is the target:
+      → torch.compile to reduce cold-start and speed up warm calls
+      → Investigate use_fold='all' (5× ensemble) performance
+      → Autozoom impact measurement
 
 Usage (Fir cluster):
-    python nninteractive_benchmark.py --input_dir /scratch/brianx7/cvpr_val/3D_val_CT
+    sbatch --account=rrg-jma nninteractive_benchmark.sh
 """
 
-import argparse
-import os
 import time
 from pathlib import Path
 
@@ -26,23 +34,24 @@ import numpy as np
 import torch
 
 CHECKPOINT_DIR = '/scratch/brianx7/nnInteractive_weights/nnInteractive_v1.0'
-N_WARMUP = 2
+INPUT_DIR      = '/scratch/brianx7/cvpr_val/3D_val_npz'
+N_WARMUP = 1
 N_TIMED  = 3
 
 
-def load_session(use_torch_compile: bool = False):
+def load_session(use_fold=0, do_autozoom=False):
     from nnInteractive.inference.inference_session import nnInteractiveInferenceSession
     session = nnInteractiveInferenceSession(
         device=torch.device('cuda', 0),
-        use_torch_compile=use_torch_compile,
+        use_torch_compile=False,
         verbose=False,
-        torch_n_threads=os.cpu_count(),
-        do_autozoom=True,
+        torch_n_threads=int(__import__('os').environ.get('SLURM_CPUS_PER_TASK', '8')),
+        do_autozoom=do_autozoom,
         use_pinned_memory=True,
     )
     session.initialize_from_trained_model_folder(
         model_training_output_dir=CHECKPOINT_DIR,
-        use_fold='all',
+        use_fold=use_fold,
     )
     return session
 
@@ -55,141 +64,56 @@ def make_bbox(b):
     ]
 
 
-def run_benchmark(session, image, bbox_list, label: str):
-    print(f"\n{'='*60}")
-    print(f"  {label}")
-    print(f"{'='*60}")
-
-    target_buffer = torch.zeros(image.shape, dtype=torch.uint8, device='cpu')
-
-    # ── Phase 1: set_image ────────────────────────────────────────────────────
-    # Warmup
-    session.set_image(image[None].astype(np.float32))
-    session.set_target_buffer(target_buffer)
-
-    # Timed
-    torch.cuda.synchronize()
-    t0 = time.perf_counter()
-    session.set_image(image[None].astype(np.float32))
-    session.set_target_buffer(target_buffer)
-    torch.cuda.synchronize()
-    t_set_image = time.perf_counter() - t0
-    print(f"  Phase 1  set_image   : {t_set_image:.3f}s  (image shape: {image.shape})")
-
-    # ── Phase 2: _predict (first object with bbox) ────────────────────────────
-    bbox_here = make_bbox(bbox_list[0])
-
-    # Warmup passes
-    for _ in range(N_WARMUP):
-        session.reset_interactions()
-        session.add_bbox_interaction(bbox_here, include_interaction=True, run_prediction=False)
-        session.new_interaction_centers = [session.new_interaction_centers[-1]]
-        session.new_interaction_zoom_out_factors = [session.new_interaction_zoom_out_factors[-1]]
-        torch.cuda.synchronize()
-        session._predict()
-        torch.cuda.synchronize()
-
-    # Timed passes
-    times = []
-    for _ in range(N_TIMED):
-        session.reset_interactions()
-        session.add_bbox_interaction(bbox_here, include_interaction=True, run_prediction=False)
-        session.new_interaction_centers = [session.new_interaction_centers[-1]]
-        session.new_interaction_zoom_out_factors = [session.new_interaction_zoom_out_factors[-1]]
-        torch.cuda.synchronize()
-        t0 = time.perf_counter()
-        session._predict()
-        torch.cuda.synchronize()
-        times.append(time.perf_counter() - t0)
-
-    t_predict = float(np.mean(times))
-    print(f"  Phase 2  _predict    : {t_predict:.3f}s  "
-          f"(runs: {[f'{t:.3f}' for t in times]})")
-
-    t_total = t_set_image + t_predict
-    print(f"  {'─'*54}")
-    print(f"  Total (1 object)     : {t_total:.3f}s")
-    print(f"    set_image  {t_set_image/t_total*100:.0f}%  |  _predict  {t_predict/t_total*100:.0f}%")
-
-    return t_set_image, t_predict
+def run_predict(session, bbox):
+    session.reset_interactions()
+    session.add_bbox_interaction(bbox, include_interaction=True, run_prediction=False)
+    session.new_interaction_centers = [session.new_interaction_centers[-1]]
+    session.new_interaction_zoom_out_factors = [session.new_interaction_zoom_out_factors[-1]]
+    session._predict()
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--input_dir', required=True,
-                        help='Directory containing CT_*.npz validation cases')
-    parser.add_argument('--case', default=None,
-                        help='Specific .npz filename to benchmark (default: first found)')
-    parser.add_argument('--skip_compile', action='store_true',
-                        help='Skip the torch.compile comparison (saves ~1h of kernel compilation)')
-    args = parser.parse_args()
+    data = np.load(next(Path(INPUT_DIR).glob('CT_*.npz')), allow_pickle=True)
+    image, bbox_list = data['imgs'], data['boxes']
+    bbox = make_bbox(bbox_list[0])
 
-    input_dir = Path(args.input_dir)
-    cases = sorted(input_dir.glob('CT_*.npz'))
-    if not cases:
-        raise FileNotFoundError(f"No CT_*.npz files found in {input_dir}")
+    print(f"Case shape : {image.shape}")
+    print(f"GPU        : {torch.cuda.get_device_name(0)}")
 
-    case_path = input_dir / args.case if args.case else cases[0]
-    print(f"Benchmark case: {case_path.name}")
-
-    data = np.load(case_path, allow_pickle=True)
-    image = data['imgs']
-    bbox_list = data.get('boxes')
-    if bbox_list is None:
-        raise ValueError(f"Case {case_path.name} has no bounding-box prompts")
-
-    print(f"Image shape : {image.shape}")
-    print(f"Objects     : {len(bbox_list)}")
-    print(f"GPU         : {torch.cuda.get_device_name(0)}")
-
-    # ── Baseline: no torch.compile ────────────────────────────────────────────
-    print("\nLoading session (no torch.compile)...")
+    print("\nLoading session (fold=0, no autozoom)...")
     t0 = time.perf_counter()
-    session = load_session(use_torch_compile=False)
+    session = load_session(use_fold=0, do_autozoom=False)
     print(f"Model loaded in {time.perf_counter() - t0:.1f}s")
 
-    t_set_v0, t_pred_v0 = run_benchmark(session, image, bbox_list,
-                                         "Baseline  (use_torch_compile=False)")
-    del session
-    torch.cuda.empty_cache()
+    # set_image (warm — called once, this IS the production pattern)
+    t0 = time.perf_counter()
+    session.set_image(image[None].astype(np.float32))
+    session.set_target_buffer(torch.zeros(image.shape, dtype=torch.uint8))
+    t_set_image = time.perf_counter() - t0
+    print(f"\nset_image  : {t_set_image:.3f}s")
 
-    # ── torch.compile (Triton available on H100) ──────────────────────────────
-    if not args.skip_compile:
-        print("\nLoading session (torch.compile=True)...")
+    # Warmup _predict (first call triggers CUDA kernel compilation)
+    print(f"Warmup _predict ({N_WARMUP} call)...")
+    for _ in range(N_WARMUP):
+        run_predict(session, bbox)
+
+    # Timed _predict
+    times = []
+    for i in range(N_TIMED):
         t0 = time.perf_counter()
-        session_compiled = load_session(use_torch_compile=True)
-        print(f"Model loaded in {time.perf_counter() - t0:.1f}s  "
-              f"(includes compile warmup)")
+        run_predict(session, bbox)
+        times.append(time.perf_counter() - t0)
+        print(f"  _predict run {i+1}: {times[-1]:.3f}s")
 
-        t_set_v1, t_pred_v1 = run_benchmark(session_compiled, image, bbox_list,
-                                              "torch.compile (use_torch_compile=True)")
-        del session_compiled
-        torch.cuda.empty_cache()
+    t_predict = float(np.mean(times))
 
-        print(f"\n{'='*60}")
-        print("SUMMARY")
-        print(f"{'='*60}")
-        print(f"{'':30s} {'Baseline':>10} {'torch.compile':>14} {'Speedup':>8}")
-        print(f"{'─'*60}")
-        print(f"{'set_image':30s} {t_set_v0:>9.3f}s {t_set_v1:>13.3f}s "
-              f"{t_set_v0/t_set_v1:>7.2f}×")
-        print(f"{'_predict (1 object)':30s} {t_pred_v0:>9.3f}s {t_pred_v1:>13.3f}s "
-              f"{t_pred_v0/t_pred_v1:>7.2f}×")
-        print(f"{'Total (1 object)':30s} {t_set_v0+t_pred_v0:>9.3f}s "
-              f"{t_set_v1+t_pred_v1:>13.3f}s "
-              f"{(t_set_v0+t_pred_v0)/(t_set_v1+t_pred_v1):>7.2f}×")
-        print(f"{'='*60}")
-    else:
-        print(f"\n{'='*60}")
-        print("BASELINE RESULTS")
-        print(f"{'='*60}")
-
-    print(f"\n  set_image  : {t_set_v0:.3f}s")
-    print(f"  _predict   : {t_pred_v0:.3f}s  (1 object, mean of {N_TIMED} runs)")
-    print(f"  Total      : {t_set_v0+t_pred_v0:.3f}s")
-    print(f"\nBottleneck: "
-          f"{'set_image' if t_set_v0 > t_pred_v0 else '_predict'} dominates "
-          f"({'%.0f' % (max(t_set_v0,t_pred_v0)/(t_set_v0+t_pred_v0)*100)}% of total)")
+    print(f"\n{'='*55}")
+    print("BASELINE RESULTS (fold=0, no autozoom, H100 MIG 3g.40gb)")
+    print(f"{'='*55}")
+    print(f"  set_image : {t_set_image:.3f}s  (once per case)")
+    print(f"  _predict  : {t_predict:.3f}s  (per object, mean of {N_TIMED} warm runs)")
+    print(f"  total/obj : {t_set_image + t_predict:.3f}s")
+    print(f"\nBottleneck: {'set_image' if t_set_image > t_predict else '_predict'}")
 
 
 if __name__ == '__main__':
