@@ -11,14 +11,14 @@ Phases timed
 Baseline results (fold=0, no autozoom, warm model, H100 MIG 3g.40gb)
 ----------------------------------------------------------------------
   set_image : 0.345s   (once per case)
-  _predict  : 0.107s   (per object, mean of 3 warm runs)
-  cold start: ~4.1s    (first _predict call only — CUDA kernel compilation)
+  _predict  : 0.108s   (per object, mean of 3 warm runs)
+  cold start: ~2.4s    (first _predict call only — CUDA kernel compilation)
 
-  For a 15-object case: 0.345 + 15 × 0.107 ≈ 1.95s
+  For a 15-object case: 0.345 + 15 × 0.108 ≈ 1.96s
 
 Results are used to decide which optimizations to pursue:
   - set_image (0.345s) is NOT the bottleneck
-  - _predict (0.107s warm, 4.1s cold) is the target:
+  - _predict (0.108s warm, 2.4s cold) is the target:
       → torch.compile to reduce cold-start and speed up warm calls
       → Investigate use_fold='all' (5× ensemble) performance
       → Autozoom impact measurement
@@ -93,7 +93,7 @@ def main():
     print(f"\nset_image  : {t_set_image:.3f}s")
 
     # Warmup _predict (first call triggers CUDA kernel compilation)
-    print(f"Warmup _predict ({N_WARMUP} call)...")
+    print(f"Warmup _predict ({N_WARMUP} call{'s' if N_WARMUP != 1 else ''})...")
     for _ in range(N_WARMUP):
         run_predict(session, bbox)
 

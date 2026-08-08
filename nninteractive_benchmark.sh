@@ -4,6 +4,7 @@
 #SBATCH --gpus=nvidia_h100_80gb_hbm3_3g.40gb:1
 #SBATCH --mem=32G
 #SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
 #SBATCH --time=3:00:00
 
 source /scratch/brianx7/envs/nninteractive/bin/activate
@@ -13,6 +14,4 @@ export XDG_CACHE_HOME=/scratch/brianx7/cache
 
 cd /scratch/brianx7/VoxTell-main
 
-python -u nninteractive_benchmark.py \
-    --input_dir /scratch/brianx7/cvpr_val/3D_val_npz \
-    --skip_compile
+python -u nninteractive_benchmark.py
