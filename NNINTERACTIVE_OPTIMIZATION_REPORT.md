@@ -54,6 +54,20 @@ session.network = torch.compile(session.network, mode='reduce-overhead')
 
 **Note**: `N_WARMUP=2` required (not 1) for compiled sessions. First warmup triggers Triton compilation (71.4s); second warmup stabilizes kernel dispatch (0.388s → 0.069s).
 
+**Accuracy check (job 54001409, 10 CT cases, 140 objects):**
+
+torch.compile produces numerically different predictions due to Triton vs cuDNN floating point differences:
+
+| Difference type | Objects | Voxel diff | Cause |
+|----------------|---------|-----------|-------|
+| Boundary rounding | majority | 1–238 voxels | Triton/cuDNN FP order differs at decision boundary |
+| Autozoom cascade | ~2/case | 70k–905k voxels | Different logits → different refinement iteration count |
+| Mean across all | 140 objects | **27,509 voxels** | — |
+
+The large differences occur on objects where `_predict()` triggers internal autozoom refinement — slightly different compiled logits change how many refinement bounding boxes fire (e.g., 14 vs 15 iterations), cascading into a substantially different mask.
+
+**DSC impact is unknown** — validation set has no local ground truth. CodaBench submission required to confirm whether the accuracy change is acceptable.
+
 ---
 
 ### O2 — Reduce ensemble (fold=0 only vs fold='all')
