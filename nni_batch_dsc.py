@@ -16,6 +16,7 @@ INPUT_DIR      = '/scratch/brianx7/cvpr_val/3D_val_npz'
 GT_DIR         = '/scratch/brianx7/cvpr_val/3D_val_gt/3D_val_gt_interactive'
 PRED_BASE_DIR  = '/scratch/brianx7/nninteractive_preds_fold0'
 PRED_COMP_DIR  = '/scratch/brianx7/nninteractive_preds_compile'
+N_CASES        = 20   # set to None to run all 881
 
 
 def make_bbox(b):
@@ -75,6 +76,8 @@ def run_batch(output_dir, use_compile):
     print(f"\n{'='*60}\n{label}\n{'='*60}")
 
     cases = sorted(Path(INPUT_DIR).glob('CT_*.npz'))
+    if N_CASES is not None:
+        cases = cases[:N_CASES]
     print(f"Found {len(cases)} CT cases")
 
     print("Loading session...")
