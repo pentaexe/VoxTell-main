@@ -103,7 +103,9 @@ def run_batch(output_dir, use_compile):
 
         data   = np.load(case_path, allow_pickle=True)
         image  = data['imgs']
-        bboxes = data['boxes']
+        bboxes = data.get('boxes')
+        if bboxes is None:
+            continue
 
         target_buf = torch.zeros(image.shape, dtype=torch.uint8, device='cpu')
         session.set_image(image[None].astype(np.float32))
