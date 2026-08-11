@@ -5,7 +5,7 @@ Runs both passes on full val set and computes DSC for each.
 Usage:
     python3 nni_batch_dsc.py
 """
-import os, time
+import os, time, shutil
 import numpy as np
 import torch
 from pathlib import Path
@@ -45,17 +45,17 @@ def dice(pred, gt, label):
     return 2 * inter / union
 
 
-def eval_dsc(pred_dir, gt_dir):
+def eval_dsc(pred_dir, gt_dir, case_list):
     pred_dir, gt_dir = Path(pred_dir), Path(gt_dir)
-    cases = sorted(pred_dir.glob('CT_*.npz'))
     all_dsc = []
     skipped = 0
-    for case_path in cases:
-        gt_path = gt_dir / case_path.name
-        if not gt_path.exists():
+    for case_path in case_list:
+        pred_path = pred_dir / case_path.name
+        gt_path   = gt_dir   / case_path.name
+        if not pred_path.exists() or not gt_path.exists():
             skipped += 1
             continue
-        pred = np.load(case_path, allow_pickle=True)['segs']
+        pred = np.load(pred_path, allow_pickle=True)['segs']
         gt   = np.load(gt_path,   allow_pickle=True)['gts']
         labels = np.unique(gt)
         labels = labels[labels > 0]
@@ -64,13 +64,15 @@ def eval_dsc(pred_dir, gt_dir):
             if not np.isnan(d):
                 all_dsc.append(d)
     if skipped:
-        print(f"  (skipped {skipped} cases — no GT)")
+        print(f"  (skipped {skipped} cases — no pred or GT)")
     return float(np.mean(all_dsc)), len(all_dsc)
 
 
 def run_batch(output_dir, use_compile):
     output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
+    output_dir.mkdir(parents=True)
 
     label = "torch.compile (fold=0)" if use_compile else "Baseline     (fold=0)"
     print(f"\n{'='*60}\n{label}\n{'='*60}")
@@ -138,7 +140,7 @@ def run_batch(output_dir, use_compile):
               f"Total: {sum(times)/60:.1f} min")
 
     print("Computing DSC...")
-    dsc, n = eval_dsc(output_dir, GT_DIR)
+    dsc, n = eval_dsc(output_dir, GT_DIR, cases)
     print(f"Mean DSC: {dsc:.4f}  ({n} objects)")
     return dsc, n
 
