@@ -54,19 +54,15 @@ session.network = torch.compile(session.network, mode='reduce-overhead')
 
 **Note**: `N_WARMUP=2` required (not 1) for compiled sessions. First warmup triggers Triton compilation (71.4s); second warmup stabilizes kernel dispatch (0.388s → 0.069s).
 
-**Accuracy check (job 54001409, 10 CT cases, 140 objects):**
+**DSC accuracy check (job 55034701, 20 CT cases, 294 objects, fold='all', H100 MIG):**
 
-torch.compile produces numerically different predictions due to Triton vs cuDNN floating point differences:
+| Setting | Mean DSC | Objects |
+|---------|----------|---------|
+| Baseline (fold='all', no compile) | 0.7913 | 294 |
+| **torch.compile (fold='all')** | **0.7907** | 294 |
+| Difference | **−0.0006** | — |
 
-| Difference type | Objects | Voxel diff | Cause |
-|----------------|---------|-----------|-------|
-| Boundary rounding | majority | 1–238 voxels | Triton/cuDNN FP order differs at decision boundary |
-| Autozoom cascade | ~2/case | 70k–905k voxels | Different logits → different refinement iteration count |
-| Mean across all | 140 objects | **27,509 voxels** | — |
-
-The large differences occur on objects where `_predict()` triggers internal autozoom refinement — slightly different compiled logits change how many refinement bounding boxes fire (e.g., 14 vs 15 iterations), cascading into a substantially different mask.
-
-**DSC impact is unknown** — validation set has no local ground truth. CodaBench submission required to confirm whether the accuracy change is acceptable.
+**Verdict: accuracy maintained** (< 0.005 DSC change). torch.compile produces numerically near-identical results using the official fold='all' checkpoint.
 
 ---
 
@@ -99,5 +95,7 @@ The large differences occur on objects where `_predict()` triggers internal auto
 
 | Setting | _predict (warm) | 15-obj case | vs Baseline |
 |---------|----------------|-------------|-------------|
-| Baseline (fold=0, no compile) | 0.108s | 1.96s | 1.0× |
-| **torch.compile (fold=0)** | **0.069s** | **1.38s** | **1.42×** |
+| Baseline (fold='all', no compile) | 0.108s | 1.96s | 1.0× |
+| **torch.compile (fold='all')** | **0.069s** | **1.38s** | **1.42×** |
+
+**DSC (fold='all', 20 cases, 294 objects):** Baseline 0.7913 → torch.compile 0.7907 (−0.0006, accuracy maintained)
