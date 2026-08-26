@@ -276,7 +276,15 @@ print(f"  v3 TOTAL (warm cache): {total_v3_warm:.2f}s\n")
 # ═══════════════════════════════════════════════════════════════════════════════
 speedup_cold  = total_v0 / total_v3_cold   # cold INT4 → cold INT4 (no cache effect; pure algo gain)
 speedup_warm  = total_v0 / total_v3_warm   # cold INT4 → warm INT4 (full v3 stack)
-cache_gain    = t_embed_v3_cold / t_embed_v3_warm  # cache speedup on embed only
+# Warm cache hits are often sub-millisecond; a ratio against that is meaningless
+# (it reports thousands-fold and is really just 1/epsilon). Report the absolute
+# time instead once it drops below a threshold the timer can resolve.
+_CACHE_RESOLVABLE = 1e-3
+if t_embed_v3_warm >= _CACHE_RESOLVABLE:
+    cache_gain_str = f"{t_embed_v3_cold / t_embed_v3_warm:.1f}×"
+else:
+    cache_gain_str = (f"cold {t_embed_v3_cold*1000:.0f}ms → warm <1ms "
+                      f"(below timer resolution; ratio not meaningful)")
 
 print("=" * 70)
 print("FAIR GPU-vs-GPU COMPARISON SUMMARY")
@@ -299,7 +307,20 @@ print(f"  {'Text embedding (warm cache)':<28} {t_embed_v0:>13.3f}s {t_embed_v3_w
 print(f"  {'TOTAL':<28} {total_v0:>13.2f}s {total_v3_warm:>11.2f}s")
 print(f"  Speedup (warm cache):     {speedup_warm:.1f}×")
 print()
-print(f"  Cache gain on embedding (cold → warm INT4): {cache_gain:.1f}×")
+print(f"  Cache gain on embedding (cold → warm INT4): {cache_gain_str}")
+print(f"  Patches: v0_gpu {n_patches_v0} vs v3 {len(slicers_v3)}"
+      + ("  ← identical: tile_step gave NO patch reduction on this image;"
+         "\n           sliding-window gain is from crop-to-nonzero, not tile_step."
+         if n_patches_v0 == len(slicers_v3) else ""))
+print(f"  Sliding window alone: {t_slide_v0:.3f}s → {t_slide_v3:.3f}s = {t_slide_v0/t_slide_v3:.2f}×")
+if t_pre_v3 > t_pre_v0:
+    print(f"  NOTE: Numba preprocessing is SLOWER here ({t_pre_v0:.3f}s → {t_pre_v3:.3f}s)."
+          "\n        Likely first-call JIT compilation. Do not claim a preprocessing speedup"
+          "\n        from this run.")
+if t_embed_v3_cold > t_embed_v0:
+    print(f"  NOTE: v3 cold embed is SLOWER than v0 ({t_embed_v0:.3f}s → {t_embed_v3_cold:.3f}s)"
+          "\n        at identical INT4 precision — the predictor path costs more than raw"
+          "\n        AutoModel. v3's embed advantage comes from the cache, not the encoder.")
 print()
 print("  Both arms: INT4 (NF4) via bitsandbytes. DSC impact of INT4 not measured.")
 print(f"  Original reported speedup: 26.0×  (CPU baseline — unfair comparison)")
@@ -317,7 +338,11 @@ lines = [
     "",
     f"Speedup cold (cold INT4 -> cold INT4, no cache, pure algo): {speedup_cold:.1f}x",
     f"Speedup warm (cold INT4 -> cached INT4, full stack):        {speedup_warm:.1f}x",
-    f"Cache gain on embedding (cold -> warm INT4):                {cache_gain:.1f}x",
+    f"Cache gain on embedding (cold -> warm INT4):                {cache_gain_str}",
+    f"Patches: v0_gpu {n_patches_v0} vs v3 {len(slicers_v3)}",
+    f"Sliding window alone: {t_slide_v0:.3f}s -> {t_slide_v3:.3f}s = {t_slide_v0/t_slide_v3:.2f}x",
+    f"Preprocessing: {t_pre_v0:.3f}s -> {t_pre_v3:.3f}s"
+    + ("  (SLOWER - likely Numba JIT on first call)" if t_pre_v3 > t_pre_v0 else ""),
     "",
     "Note: Both arms use identical INT4 (NF4) via bitsandbytes. Precision-matched.",
     "Note: Original 26x used CPU baseline (FP32 text encoder VRAM overflow).",
