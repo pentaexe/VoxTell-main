@@ -71,10 +71,11 @@ session.network = torch.compile(session.network, mode='reduce-overhead')
 | Residual (run 2) | 0.544s |
 | Fully warm (runs 3–5 mean) | **0.0907s** |
 | Warm gain per object vs baseline | 0.0736s (0.2882 − 0.2146) |
-| Break-even (cold cache) | **~311 objects (~16 cases)** |
-| First case cold (15 obj) | **~24.3s** vs 4.38s baseline |
+| Break-even (partial isolation, 22.91s) | **~311 objects (~21 cases)** |
+| Break-even (full isolation, 71.4s est.) | **~970 objects (~66 cases)** |
+| First case cold (avg 14.7 obj) | **~24.3s** vs 4.38s baseline |
 
-The shared Triton cache at `/scratch/brianx7/cache` was not modified. Break-even is reached after ~16 cases; every subsequent case runs at 1.34×.
+⚠️ **Isolation note**: `TORCHINDUCTOR_CACHE_DIR` was not set in job 56908465. Inductor defaults to `/tmp/torchinductor_brianx7`, which may have contained kernels from prior jobs. The 22.91s is a **lower bound**. A fully isolated rerun (with `TORCHINDUCTOR_CACHE_DIR` pointed to the temp dir) is needed to confirm. Break-even range: **311–970 objects (21–66 cases)**. The shared cache at `/scratch/brianx7/cache` was not modified.
 
 ---
 

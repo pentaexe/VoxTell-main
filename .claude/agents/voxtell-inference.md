@@ -21,7 +21,7 @@ ssh brianx7@fir.alliancecan.ca
 |-------|-------------------|
 | VoxTell v0_gpu (baseline) | 2.27s |
 | VoxTell v3 (optimized) | 0.55s |
-| nnInteractive (fold='all', warm) | 0.108s |
+| nnInteractive (fold='all', autozoom=ON, warm) | 0.2146s (compiled) / 0.2882s (baseline) |
 
 nnInteractive is ~5× faster per prompt than optimized VoxTell because it uses bbox prompts (no 4B text encoder).
 

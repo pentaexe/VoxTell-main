@@ -19,8 +19,9 @@ INPUT_DIR      = '/scratch/brianx7/cvpr_val/3D_val_npz'
 _JOB_ID   = os.environ.get('SLURM_JOB_ID', 'local')
 _TEMP_DIR = f'/scratch/brianx7/tmp_coldstart_{_JOB_ID}'
 os.makedirs(_TEMP_DIR, exist_ok=True)
-os.environ['XDG_CACHE_HOME'] = _TEMP_DIR
-os.environ['TORCH_HOME']     = _TEMP_DIR
+os.environ['XDG_CACHE_HOME']          = _TEMP_DIR
+os.environ['TORCH_HOME']              = _TEMP_DIR
+os.environ['TORCHINDUCTOR_CACHE_DIR'] = os.path.join(_TEMP_DIR, 'inductor')
 
 def _cleanup():
     if os.path.exists(_TEMP_DIR):

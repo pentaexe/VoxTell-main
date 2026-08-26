@@ -80,11 +80,13 @@ cd /scratch/brianx7/VoxTell-main
 python -u <script>.py
 ```
 
-## Key results (as of August 2026)
-- Baseline (fold='all', warm): **0.108s** per object
-- torch.compile (fold='all', warm): **0.069s** per object → **1.58× speedup**
-- DSC: Baseline 0.7913 → Compiled 0.7907 (**−0.0006**, accuracy maintained)
-- Triton cold-start: ~71s (cached after first run via XDG_CACHE_HOME)
+## Key results (job 56908464, fold='all', autozoom=ON, H100 MIG)
+- Baseline warm: **0.2882s** per object, **4.38s** per case
+- torch.compile warm: **0.2146s** per object, **3.29s** per case → **1.34× speedup**
+- DSC: Baseline 0.7914 → Compiled 0.7916 (**+0.0002**, accuracy maintained)
+- Triton cold-start: 22.91s (partial isolation) to 71.4s (full isolation) — range pending clean run
+- Break-even: 311–970 objects (21–66 cases)
+- Note: earlier 1.58× figure used autozoom=OFF/fold=0 — not the production config
 
 ## Common issues
 - `TritonMissing`: run `source /scratch/brianx7/envs/nninteractive/bin/activate && pip install --no-index triton`
