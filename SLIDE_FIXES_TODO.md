@@ -51,14 +51,29 @@ held constant.
 Reran with the corrected script (warmed GPU, verified-cold embed, both arms INT4).
 Nine comparable runs on the RTX 4070 SUPER:
 
+**Cite the five verified-cold runs only:**
+
 | | value |
 |---|---|
-| Comparison A (cold-to-cold, algorithmic) | **mean 1.7×, range 1.5–2.0× (n=9)** |
-| Comparison B (warm cache) | mean ~1.9×, range 1.6–2.1× |
-| Sliding window alone | mean 1.91×, range 1.83–2.01× (n=5) |
+| Comparison A (cold-to-cold, algorithmic) | **1.7× mean, range 1.6–1.8× (n=5)** |
+| Comparison B (warm cache) | 1.9× mean, range 1.9–2.0× (n=5) |
+| Sliding window alone | 1.91× mean, range 1.83–2.01× (n=5) |
 
-**Cite the mean with the range, never a point estimate.** The last five runs
-verified the embed cache was empty before and written after each cold measurement.
+Per-run Comparison A: 1.7, 1.7, 1.6, 1.8, 1.6. An 11% spread — comparable to
+nnInteractive's 8.6% and tight enough to be a selling point rather than a caveat.
+
+**Do NOT pool these with the four earlier runs** (1.5, 1.5, 2.0, 1.5). Pooling
+gives "1.7× range 1.5–2.0×", which buries the tight spread and takes its upper
+bound from an unverified outlier. Only these five assert that the embed cache was
+empty before the cold measurement and written after it; the earlier set includes a
+run whose "cold" embed read 0.085s — faster than the FP16-matched v0 arm, which a
+genuine cold encode should not do. That run produced the 2.0×, and its cause was
+never established.
+
+(The assertions are pure checks and change no timing behaviour, so this is not a
+script-version difference — it is a measurement-verification difference.)
+
+**Cite the mean with the range, never a point estimate.**
 
 Two caveats that must travel with this number:
 
