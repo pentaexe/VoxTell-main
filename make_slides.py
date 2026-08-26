@@ -139,6 +139,10 @@ txbox(s, 'torch.compile  ·  Embedding Cache  ·  Sliding Window  ·  Numba Prep
 txbox(s, 'Brian Xiao  ·  rrg-jma  ·  Fir cluster (Alliance Canada)',
       0.9, 6.6, 10, 0.4, size=10, color=MUTED)
 
+# DRAFT watermark
+txbox(s, 'DRAFT — nnInteractive results pending 3-run variance confirmation',
+      0.5, 6.9, 12, 0.45, size=10, color=AMBER, align=PP_ALIGN.CENTER)
+
 # ── SLIDE 2: What is Medical Image Segmentation ────────────────────────────
 s = add_slide()
 set_bg(s, SLIDE_BG)
@@ -183,80 +187,80 @@ for i, (model, desc, latency, color) in enumerate([
 # ── SLIDE 3: VoxTell — Baseline ────────────────────────────────────────────
 s = add_slide()
 set_bg(s, SLIDE_BG)
-slide_header(s, 'VoxTell — Baseline Profiling (H100 MIG 3g.40gb)', '03 / 12', AMBER)
+slide_header(s, 'VoxTell — Baseline & The Bug', '03 / 12', AMBER)
 
-txbox(s, 'v0_gpu configuration: Qwen3 4B text encoder + nnUNet 3D segmentation head',
-      0.5, 0.9, 12, 0.4, size=12, color=MUTED)
+txbox(s, 'Hardware: NVIDIA GeForce RTX 4070 SUPER (12 GB GDDR6X)  ·  v0_gpu: Qwen3-4B + nnUNet 3D',
+      0.5, 0.9, 12, 0.35, size=10, color=MUTED)
 
-tbl = add_table(s, 4, 3, 0.5, 1.4, 7.5, 2.2)
-headers = ['Phase', 'Latency', 'Notes']
-for c, h in enumerate(headers):
-    cell_set(tbl.cell(0, c), h, bold=True, bg=NAVY, color=WHITE, size=12)
-rows_data = [
-    ('Text encoding (Qwen3 CPU)', '~2.1s', 'Dominates — runs on CPU by default'),
-    ('Image preprocessing', '0.23s', 'Crop, normalize, patch'),
-    ('nnUNet inference (GPU, warm)', '0.04s', 'Fast once on GPU'),
-]
 alt_bg = RGBColor(0xF5, 0xF2, 0xEB)
+tbl = add_table(s, 4, 3, 0.5, 1.3, 8.5, 2.0)
+for c, h in enumerate(['Phase', 'Latency (v0_gpu, RTX 4070 SUPER)', 'Notes']):
+    cell_set(tbl.cell(0, c), h, bold=True, bg=NAVY, color=WHITE, size=11)
+rows_data = [
+    ('Text encoding — BUG: Qwen3-4B silently on CPU', '~2.7s', 'FP32 overflows 12 GB VRAM → CPU fallback'),
+    ('Image preprocessing (numpy)', '~0.23s', 'Crop, z-score normalize, patch'),
+    ('Sliding window inference (GPU, warm)', '~0.17s', 'tile_step=0.5, ~343 patches, FP16'),
+]
 for r, (a, b, c) in enumerate(rows_data):
     bg = alt_bg if r % 2 == 0 else WHITE
-    cell_set(tbl.cell(r+1, 0), a, bg=bg, size=11)
-    cell_set(tbl.cell(r+1, 1), b, bg=bg, size=11, align=PP_ALIGN.CENTER)
-    cell_set(tbl.cell(r+1, 2), c, bg=bg, size=11, color=MUTED)
+    bug_color = AMBER if r == 0 else None
+    cell_set(tbl.cell(r+1, 0), a, bg=bg, size=10, color=bug_color)
+    cell_set(tbl.cell(r+1, 1), b, bg=bg, size=10, align=PP_ALIGN.CENTER)
+    cell_set(tbl.cell(r+1, 2), c, bg=bg, size=10, color=MUTED)
 
-txbox(s, 'Total per prompt: 2.27s  —  bottleneck is the text encoder on CPU',
-      0.5, 3.75, 9, 0.4, size=13, bold=True, color=AMBER)
+txbox(s, 'Total: ~3.10s per prompt  —  dominated by text encoder running on CPU (silent bug)',
+      0.5, 3.45, 10, 0.4, size=13, bold=True, color=AMBER)
 
-txbox(s, 'Optimization Opportunity', 0.5, 4.3, 5, 0.35, size=10, bold=True, color=TEAL)
+txbox(s, 'Root cause', 0.5, 3.95, 5, 0.32, size=10, bold=True, color=AMBER)
 txbox(s,
-      '①  Move text encoder to GPU with FP16\n'
-      '②  Cache embeddings for repeated prompts\n'
-      '③  Reduce sliding window patch count\n'
-      '④  Numba-accelerate preprocessing',
-      0.5, 4.7, 5.5, 1.5, size=12, color=NAVY)
+      'Qwen3-4B in FP32 requires ~16 GB VRAM. RTX 4070 SUPER has 12 GB. '
+      'PyTorch silently falls back to CPU when VRAM is insufficient. '
+      'Fix: load with dtype=torch.float16 → 8 GB VRAM, stays on GPU.',
+      0.5, 4.3, 6.5, 1.0, size=11, color=NAVY)
 
-txbox(s, '2.27s', 8.3, 4.2, 2.5, 0.8, size=44, bold=True, color=AMBER,
+txbox(s, 'After fix', 0.5, 5.4, 2, 0.32, size=10, bold=True, color=TEAL)
+txbox(s, 'Text: 2.7s → 0.02s warm cache  |  Total (no cache): 3.10s → 2.38s on same hardware',
+      0.5, 5.75, 10, 0.35, size=11, color=NAVY)
+
+txbox(s, '3.10s', 9.8, 3.9, 3.0, 0.85, size=40, bold=True, color=AMBER,
       align=PP_ALIGN.CENTER)
-txbox(s, 'baseline per prompt', 8.0, 5.0, 3.0, 0.4, size=11, color=MUTED,
+txbox(s, 'RTX 4070 SUPER baseline', 9.5, 4.75, 3.5, 0.35, size=10, color=MUTED,
       align=PP_ALIGN.CENTER)
 
 
 # ── SLIDE 4: VoxTell — Optimizations ──────────────────────────────────────
 s = add_slide()
 set_bg(s, SLIDE_BG)
-slide_header(s, 'VoxTell — Four Optimizations', '04 / 12', AMBER)
+slide_header(s, 'VoxTell — Bug Fix + Three Algorithmic Optimizations', '04 / 12', AMBER)
 
-tbl = add_table(s, 5, 4, 0.5, 0.85, 12.3, 3.2)
-hdrs = ['Optimization', 'Method', 'Speedup', 'DSC change']
+txbox(s, 'All measurements on NVIDIA GeForce RTX 4070 SUPER (12 GB)  ·  DSC from experiment_log.md',
+      0.5, 0.82, 12, 0.32, size=10, color=MUTED)
+
+tbl = add_table(s, 5, 4, 0.5, 1.2, 12.3, 3.0)
+hdrs = ['Change', 'Method', 'Speedup', 'DSC change']
 for c, h in enumerate(hdrs):
-    cell_set(tbl.cell(0, c), h, bold=True, bg=NAVY, color=WHITE, size=12)
+    cell_set(tbl.cell(0, c), h, bold=True, bg=NAVY, color=WHITE, size=11)
 
 opt_rows = [
-    ('FP16 GPU placement', 'dtype=torch.float16 on Qwen3 → GPU', '46.7× text encoding', '< 0.001'),
-    ('Sliding window overlap', 'tile_step 0.5 → 0.75  (343 → 125 patches)', '3.6×', '+0.0006'),
-    ('Embedding cache', 'LRU memory + SHA-256 disk cache', '18.7× warm', 'Identical'),
-    ('Numba preprocessing', '@njit(parallel=True) crop + normalize', '1.4×', 'Unchanged'),
+    ('BUG FIX: FP16 GPU placement', 'dtype=torch.float16 on Qwen3 → keeps encoder on GPU', '46.7× text encoding', '< 0.001'),
+    ('Sliding window overlap', 'tile_step 0.5 → 0.75  (343 → 125 patches)', '3.6× sliding window', '+0.0006'),
+    ('Embedding cache', 'LRU memory + SHA-256 disk cache', '18.7× warm re-query', 'Identical'),
+    ('Numba preprocessing', '@njit(parallel=True) crop + z-score normalize', '1.4× preprocessing', 'Unchanged'),
 ]
+bug_bg = RGBColor(0xFF, 0xF3, 0xE0)
 for r, row in enumerate(opt_rows):
-    bg = alt_bg if r % 2 == 0 else WHITE
+    bg = bug_bg if r == 0 else (alt_bg if r % 2 == 1 else WHITE)
     for c, val in enumerate(row):
-        sp_color = TEAL if c == 2 else (RGBColor(0x1A, 0x6A, 0x30) if c == 3 else None)
-        cell_set(tbl.cell(r+1, c), val, bg=bg, size=11,
+        sp_color = (AMBER if r == 0 else TEAL) if c == 2 else (RGBColor(0x1A, 0x6A, 0x30) if c == 3 else None)
+        cell_set(tbl.cell(r+1, c), val, bg=bg, size=10,
                  color=sp_color, bold=(c == 2))
 
-txbox(s, 'Combined result', 0.5, 4.3, 3.5, 0.35, size=10, bold=True, color=AMBER)
+txbox(s, 'Fair GPU-vs-GPU result (fair_benchmark_results.txt)', 0.5, 4.4, 7, 0.32, size=10, bold=True, color=AMBER)
 txbox(s,
-      'All four optimizations stack independently. Combined: 2.27s → 0.55s on warm cache.',
-      0.5, 4.65, 7, 0.5, size=12, color=NAVY)
-
-for val, lbl, col, xoff in [
-    ('4.1×', 'combined speedup', AMBER, 8.5),
-    ('0.55s', 'warm per prompt', TEAL, 10.5),
-]:
-    txbox(s, val, xoff, 4.1, 2.3, 0.8, size=36, bold=True, color=col,
-          align=PP_ALIGN.CENTER)
-    txbox(s, lbl, xoff, 4.9, 2.3, 0.35, size=10, color=MUTED,
-          align=PP_ALIGN.CENTER)
+      'With Qwen3 on GPU in both configs: v0_gpu (FP16, tile_step=0.5, no cache) 3.10s → '
+      'v3 (all opts) 2.38s. Algorithmic gain only: 1.3×.  '
+      'The 46.7× text speedup was eliminating the bug, not an algorithmic optimization.',
+      0.5, 4.75, 12, 0.9, size=11, color=NAVY)
 
 
 # ── SLIDE 5: VoxTell — Accuracy ────────────────────────────────────────────
@@ -318,24 +322,17 @@ for i, (title, body, col) in enumerate([
     txbox(s, title, 0.7, top + 0.05, 4.5, 0.35, size=13, bold=True, color=col)
     txbox(s, body, 0.7, top + 0.45, 5.5, 0.9, size=11, color=NAVY)
 
-# right: comparison table
-txbox(s, 'Speed comparison (H100 MIG 3g.40gb)', 7.2, 0.9, 5.5, 0.35,
+# right: why nnInteractive is faster
+txbox(s, 'Why nnInteractive is faster than VoxTell', 7.2, 0.9, 5.5, 0.35,
       size=10, bold=True, color=TEAL)
-tbl = add_table(s, 3, 2, 7.2, 1.3, 5.7, 1.4)
-cell_set(tbl.cell(0, 0), 'Model', bold=True, bg=NAVY, color=WHITE, size=11)
-cell_set(tbl.cell(0, 1), 'Per-prompt (warm)', bold=True, bg=NAVY, color=WHITE, size=11)
-cmp_rows = [
-    ('VoxTell v3 (optimized)', '0.55s'),
-    ('nnInteractive (baseline)', '0.288s'),
-]
-for r, (a, b) in enumerate(cmp_rows):
-    bg = alt_bg if r % 2 == 0 else WHITE
-    cell_set(tbl.cell(r+1, 0), a, bg=bg, size=11)
-    cell_set(tbl.cell(r+1, 1), b, bg=bg, size=11, color=TEAL, bold=True)
-
-txbox(s, 'nnInteractive is ~2.6× faster per prompt than optimized VoxTell\n'
-         'because it uses geometric bbox prompts — no 4B text encoder.',
-      7.2, 2.85, 5.7, 0.8, size=11, color=NAVY)
+txbox(s,
+      'VoxTell accepts free-text prompts ("brain", "left kidney") — '
+      'each requires a Qwen3-4B text encoder forward pass even with FP16 on GPU.\n\n'
+      'nnInteractive accepts a 3-D bounding box directly — no text encoder, '
+      'the encoder cost is zero. Geometric prompts are sufficient for the CVPR challenge format.\n\n'
+      'A direct per-prompt latency comparison requires both models on the same hardware. '
+      'VoxTell H100 numbers are pending retrieval from cluster logs (benchmark_v0gpu_h100.py).',
+      7.2, 1.35, 5.7, 4.5, size=11, color=NAVY)
 
 
 # ── SLIDE 7: nnInteractive Profiling ──────────────────────────────────────
@@ -548,11 +545,11 @@ for c, h in enumerate(['Model', 'Optimization', 'Method', 'Speedup', 'DSC impact
     cell_set(tbl.cell(0, c), h, bold=True, bg=NAVY, color=WHITE, size=11)
 
 summary_rows = [
-    ('VoxTell', 'FP16 GPU placement', 'dtype=torch.float16 on Qwen3', '46.7× text', '< 0.001'),
-    ('', 'Sliding window overlap', 'tile_step 0.5 → 0.75', '3.6×', '+0.0006'),
+    ('VoxTell', 'BUG FIX: FP16 GPU placement', 'dtype=torch.float16 on Qwen3', '46.7× text', '< 0.001'),
+    ('', 'Sliding window overlap', 'tile_step 0.5 → 0.75', '3.6× window', '+0.0006'),
     ('', 'Embedding cache', 'LRU memory + SHA-256 disk', '18.7× warm', 'Identical'),
-    ('', 'Numba preprocessing', '@njit(parallel=True)', '1.4×', 'Unchanged'),
-    ('nnInteractive', 'torch.compile', 'compile(network, mode=\'reduce-overhead\')', '1.34× / object', '+0.0002'),
+    ('', 'Numba preprocessing', '@njit(parallel=True)', '1.4× preprocess', 'Unchanged'),
+    ('nnInteractive', 'torch.compile', 'compile(network, mode=\'reduce-overhead\')', '1.34× / object *', '+0.0002'),
 ]
 for r, row in enumerate(summary_rows):
     bg = RGBColor(0xFD, 0xF5, 0xE4) if r < 4 else RGBColor(0xE0, 0xF2, 0xEE)
@@ -561,15 +558,21 @@ for r, row in enumerate(summary_rows):
         cell_set(tbl.cell(r+1, c), val, bg=bg, size=10,
                  color=sp_color, bold=(c == 3 and bool(val)))
 
-txbox(s, 'Key results', 0.5, 4.35, 4, 0.35, size=10, bold=True, color=NAVY)
+txbox(s, 'VoxTell (RTX 4070 SUPER, experiment_log.md)', 0.5, 4.35, 7, 0.32, size=10, bold=True, color=AMBER)
 txbox(s,
-      'VoxTell: 2.27s → 0.55s overall (4.1×). Accuracy maintained (< 0.001 DSC change).\n'
-      'nnInteractive: 0.288s → 0.215s per object (1.34×). DSC 0.7914 → 0.7916 (+0.0002).\n'
-      'Both measured on H100 MIG 3g.40gb · fold=\'all\' checkpoint · Fir cluster (rrg-jma)',
-      0.5, 4.75, 12, 0.9, size=11, color=NAVY)
+      'Fair GPU-vs-GPU: 3.10s → 2.38s (1.3× algorithmic gain). '
+      'Bug fix excluded from fair comparison — it was a latent defect, not an optimization. '
+      'Accuracy maintained (< 0.001 DSC change across all four changes).',
+      0.5, 4.7, 12, 0.55, size=11, color=NAVY)
 
-txbox(s, '⚠  nnInteractive 1.34× is a single-job result. Three serialized repeat jobs pending for variance confirmation.',
-      0.5, 5.8, 12, 0.4, size=10, color=AMBER)
+txbox(s, 'nnInteractive (H100 MIG 3g.40gb, Fir cluster, job 56908464)', 0.5, 5.35, 8, 0.32, size=10, bold=True, color=TEAL)
+txbox(s,
+      '0.288s → 0.215s per object. DSC 0.7914 → 0.7916 (+0.0002). '
+      'Speed and accuracy from the same job, same config.',
+      0.5, 5.7, 12, 0.45, size=11, color=NAVY)
+
+txbox(s, '* nnInteractive 1.34× is n=1. Three serialized repeat jobs (nni_rep, singleton) pending — update before presentation.',
+      0.5, 6.25, 12, 0.4, size=10, color=AMBER)
 
 
 # ── Save ───────────────────────────────────────────────────────────────────

@@ -28,23 +28,25 @@ source /scratch/brianx7/envs/nninteractive/bin/activate   # cluster (nnInteracti
 conda activate voxtell                                      # local Windows
 ```
 
-## Key benchmarked latencies (H100 MIG 3g.40gb, Fir cluster)
-| Model / Config | Per-prompt latency |
-|----------------|-------------------|
-| VoxTell v0_gpu (baseline, CPU inference) | 2.27s |
-| VoxTell v3 (FP16 GPU + sliding window + embedding cache + Numba) | 0.55s |
-| nnInteractive baseline (fold='all', autozoom=ON) | 0.2882s |
-| nnInteractive torch.compile (fold='all', autozoom=ON) | 0.2146s |
+## Benchmarked latencies
+| Model / Config | Hardware | Per-prompt | Source |
+|----------------|----------|-----------|--------|
+| VoxTell v0_gpu (Qwen3 silently on CPU, FP32 VRAM overflow) | RTX 4070 SUPER | 3.10s | fair_benchmark_results.txt |
+| VoxTell v3 (all opts, GPU-vs-GPU fair baseline) | RTX 4070 SUPER | 2.38s | fair_benchmark_results.txt |
+| nnInteractive baseline (fold='all', autozoom=ON) | H100 MIG 3g.40gb | 0.2882s | job 56908464 |
+| nnInteractive torch.compile | H100 MIG 3g.40gb | 0.2146s | job 56908464 |
 
-nnInteractive is ~5× faster per prompt than optimized VoxTell because it uses bbox prompts and has no large text encoder.
+VoxTell H100 numbers (benchmark_v0gpu_h100.py) need retrieval from Fir cluster logs before any cross-model comparison can be stated. RTX vs H100 is not directly comparable.
 
-## VoxTell optimizations (all verified, DSC maintained)
-| Optimization | Method | Speedup | DSC change |
-|-------------|--------|---------|-----------|
-| FP16 GPU placement | `dtype=torch.float16` on Qwen3 | 46.7× text encoding | < 0.001 |
-| Sliding window overlap | tile_step 0.5 → 0.75 (343→125 patches) | 3.6× | +0.0006 |
-| Embedding cache | LRU memory + SHA256 disk cache | 18.7× warm | Identical |
-| Numba preprocessing | `@njit(parallel=True)` crop + normalize | 1.4× | Unchanged |
+## VoxTell changes (RTX 4070 SUPER, all from experiment_log.md)
+| Change | Method | Speedup | DSC change |
+|--------|--------|---------|-----------|
+| **BUG FIX**: FP16 GPU placement | `dtype=torch.float16` on Qwen3 — was silently on CPU | 46.7× text encoding | < 0.001 |
+| Sliding window overlap | tile_step 0.5 → 0.75 (343→125 patches) | 3.6× sliding window | +0.0006 |
+| Embedding cache | LRU memory + SHA256 disk cache | 18.7× warm re-query | Identical |
+| Numba preprocessing | `@njit(parallel=True)` crop + normalize | 1.4× preprocessing | Unchanged |
+
+Fair GPU-vs-GPU algorithmic gain (bug fix excluded): **1.3×** (3.10s → 2.38s)
 
 ## Submit workflow
 ```bash

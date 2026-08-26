@@ -16,14 +16,15 @@ ssh brianx7@fir.alliancecan.ca
 # Password → type 1 for Duo push → approve on iPhone
 ```
 
-## Key benchmarked latencies (H100 MIG 3g.40gb)
-| Model | Per-prompt latency |
-|-------|-------------------|
-| VoxTell v0_gpu (baseline) | 2.27s |
-| VoxTell v3 (optimized) | 0.55s |
-| nnInteractive (fold='all', autozoom=ON, warm) | 0.2146s (compiled) / 0.2882s (baseline) |
+## Benchmarked latencies
+| Model | Hardware | Per-prompt latency | Source |
+|-------|----------|--------------------|--------|
+| VoxTell v0_gpu (RTX, bug present) | RTX 4070 SUPER | 3.10s | fair_benchmark_results.txt |
+| VoxTell v3 (RTX, all opts) | RTX 4070 SUPER | 2.38s | fair_benchmark_results.txt |
+| nnInteractive baseline (fold='all', autozoom=ON) | H100 MIG 3g.40gb | 0.2882s | job 56908464 |
+| nnInteractive torch.compile | H100 MIG 3g.40gb | 0.2146s | job 56908464 |
 
-nnInteractive is ~5× faster per prompt than optimized VoxTell because it uses bbox prompts (no 4B text encoder).
+Note: VoxTell H100 numbers (from benchmark_v0gpu_h100.py run on Fir) need retrieval from cluster logs before cross-model comparison can be stated. RTX vs H100 latency is not directly comparable.
 
 ## Context
 VoxTell is the lab's own model submitted to the CVPR 2025 medical image segmentation challenge. The nnInteractive work is a separate optimization study on the challenge baseline model, requested by Dr. Jun Ma.
