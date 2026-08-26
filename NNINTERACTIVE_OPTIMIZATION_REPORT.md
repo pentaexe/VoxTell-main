@@ -57,43 +57,59 @@ session.network = torch.compile(session.network, mode='reduce-overhead')
 
 **Verdict: accuracy maintained** (< 0.005 DSC change).
 
-**Note on earlier 1.58× figure**: The June benchmark (job 46108850) used autozoom=OFF and fold=0, giving 0.108s baseline and 0.069s compiled (1.58×). With autozoom=ON — the correct production config — per-object latency is higher because some objects trigger multiple refinement passes. The 1.34× figure is the correct production speedup.
+**Note on earlier 1.58× figure**: The June benchmark (job 46108850) used `torch_n_threads=8` (SLURM_CPUS_PER_TASK), autozoom=OFF, and fold=0, giving 0.108s baseline (1.58× speedup). The controlled autozoom experiment (job 56914754) shows autozoom=ON is actually 13% *faster* than autozoom=OFF on this dataset, ruling out autozoom as the cause of the higher baseline. The most likely explanation is thread oversubscription: `torch_n_threads=os.cpu_count()` (which may return 64+ on the compute node) creates more threads than the 8 allocated cores can serve, increasing dispatch overhead. The 1.34× figure, measured with `os.cpu_count()` and fold='all', is the correct production speedup.
 
 **N_WARMUP=2 required**: First warmup triggers Triton compilation; second stabilizes dispatch. With only 1 warmup, compiled latency reads ~0.54s and speedup appears ~1.0×.
 
 ---
 
-### Cold-Start Timing (job 56908465 — isolated per-job cache, shared cache untouched)
+### Cold-Start Timing (job 56914757 — fully isolated, all three cache env vars set before torch import)
+
+`XDG_CACHE_HOME`, `TORCH_HOME`, and `TORCHINDUCTOR_CACHE_DIR` all pointed to a fresh per-job `/tmp` dir before `import torch`. Script asserts inductor cache is empty before compile. Shared cache at `/scratch/brianx7/cache` unchanged.
 
 | Metric | Value |
 |--------|-------|
-| Triton cold-start (run 1) | **22.91s** |
-| Residual (run 2) | 0.544s |
-| Fully warm (runs 3–5 mean) | **0.0907s** |
-| Warm gain per object vs baseline | 0.0736s (0.2882 − 0.2146) |
-| Break-even (partial isolation, 22.91s) | **~311 objects (~21 cases)** |
-| Break-even (full isolation, 71.4s est.) | **~970 objects (~66 cases)** |
-| First case cold (avg 14.7 obj) | **~24.3s** vs 4.38s baseline |
+| Triton cold-start (run 1) | **23.61s** |
+| Residual (run 2) | 0.513s |
+| Fully warm mean (runs 3–6, single object) | 0.125s |
+| Warm gain per object (production, from job 56908464) | **0.0736s** (0.2882 − 0.2146) |
+| Break-even (using production gain) | **~321 objects (~22 cases)** |
+| First case cold (~14.7 obj) | **~25.4s** vs **~4.38s** baseline |
 
-⚠️ **Isolation note**: `TORCHINDUCTOR_CACHE_DIR` was not set in job 56908465. Inductor defaults to `/tmp/torchinductor_brianx7`, which may have contained kernels from prior jobs. The 22.91s is a **lower bound**. A fully isolated rerun (with `TORCHINDUCTOR_CACHE_DIR` pointed to the temp dir) is needed to confirm. Break-even range: **311–970 objects (21–66 cases)**. The shared cache at `/scratch/brianx7/cache` was not modified.
+**Break-even derivation**: 23.61s ÷ 0.0736s/object = 321 objects; 321 ÷ 14.7 obj/case = 22 cases.
+
+Note: `/tmp` is node-local fast storage. Production Triton cache sits on `/scratch` (network FS), so production cold-start will read somewhat higher than 23.61s. The 23.61s is therefore a lower bound for a from-scratch production deployment.
+
+**Noise note**: Repeat runs of the same config (fold='all', autozoom=ON, baseline) give 0.2882s (job 56908464) and 0.2491s (job 56914754) — 15.7% spread on an identical measurement. This is more than half the claimed 25.5% effect size. Three repeat combined jobs (56908464 config) are needed to confirm 1.34× is a stable result rather than a favorable draw.
 
 ---
 
 ## O2 — fold='all' vs fold=0 (SUPERSEDED)
 
-**Correction**: `fold='all'` in nnU-Net is a **single model trained on the full training set** — it is NOT a 5-fold ensemble. Per-object latency is identical to fold=0 (same architecture, same patch count). The 0.33 DSC with fold=0 vs 0.79 with fold='all' likely reflects undertrained or mismatched weights in the fold_0 directory. Do not present this as a speed/quality tradeoff.
+**Note**: In the standard nnU-Net CLI, `fold='all'` trains a single model on the full training set. However, nnInteractive's `nnInteractiveInferenceSession` wrapper may resolve `use_fold='all'` differently — potentially loading multiple fold checkpoints if they all exist in the weights directory. **Unconfirmed: run `print(len(session.list_of_parameters))` after `initialize_from_trained_model_folder` to verify.** If the result is 5, it is an ensemble and the 0.108s→0.288s latency gap is fully explained. If it is 1, something environmental explains the gap. Do not claim single-model until verified. The 0.33 DSC with fold=0 vs 0.79 with fold='all' likely reflects undertrained or mismatched weights in the fold_0 directory.
 
 ---
 
 ## O3 — Kernel cache pre-warming
 
-Triton cache persists on scratch via `XDG_CACHE_HOME=/scratch/brianx7/cache`. Cold-start cost (22.91s) is paid once per environment; all subsequent jobs on Fir use the warm cache.
+Triton cache persists on scratch via `XDG_CACHE_HOME=/scratch/brianx7/cache`. Cold-start cost (23.61s on /tmp; higher on /scratch) is paid once per environment; all subsequent jobs on Fir use the warm cache.
 
 ---
 
-## O4 — autozoom analysis ✅ IMPLICITLY MEASURED
+## O4 — autozoom analysis ✅ MEASURED (job 56914754)
 
-The combined job (56908464) ran with autozoom=ON. Baseline 0.2882s/object vs early autozoom=OFF baseline of 0.108s — autozoom adds ~0.18s mean overhead per object across the validation set, with zero overhead on simple objects and multiple refinement passes on complex anatomy.
+Controlled experiment: fold='all', no compile, same 20 cases, autozoom=ON vs autozoom=OFF in one process.
+
+| Config | Per-object | Per-case | vs OFF |
+|--------|-----------|----------|--------|
+| autozoom=OFF | 0.2875s | 4.23s | 1.00× |
+| autozoom=ON | 0.2491s | 3.67s | **0.87×** |
+
+autozoom=ON reads 0.2491s and autozoom=OFF reads 0.2875s in this experiment, but the difference is noise, not a real effect. The autozoom job log prints "No zoom out necessary / No refinement necessary" for **every single object** — autozoom never fired on any case in this validation set. A feature that never activates cannot produce a 13% speedup. The measured delta (0.0384s) is within the 15.7% job-to-job spread observed for this config (0.2882s in job 56908464 vs 0.2491s in job 56914754).
+
+**The correct O4 finding**: autozoom overhead is approximately zero on this validation set because no object triggered a zoom-out pass. This may not hold on data where anatomy crosses bbox boundaries and forces multi-scale refinement. On typical CVPR validation CT data, autozoom adds no measurable latency.
+
+Autozoom is also not the explanation for the 0.108s (June) vs 0.288s (current) gap, since the controlled experiment shows autozoom=OFF also gives 0.288s. The remaining candidate is `torch_n_threads=os.cpu_count()` vs the June `torch_n_threads=8` (SLURM_CPUS_PER_TASK) — if os.cpu_count() returns a large number on the compute node, thread oversubscription onto 8 allocated cores would explain the difference. **Unconfirmed: requires checking `os.cpu_count()` on the node and comparing.** Alternatively, `use_fold='all'` may load multiple models in nnInteractive's session wrapper (see O2 note).
 
 ---
 
@@ -103,7 +119,8 @@ The combined job (56908464) ran with autozoom=ON. Baseline 0.2882s/object vs ear
 |-----|------|-----------|---------------|-------------|
 | 55034701 | DSC comparison (fold='all') | 5:22 | 14.79% of 8 cores | 7.36 GB / 64 GB |
 | 56908464 | Combined latency + DSC | 4:22 | 18.75% of 8 cores | 7.57 GB / 64 GB |
-| 56908465 | Cold-start timing | 1:57 | 4.49% of 8 cores | 3.76 GB / 64 GB |
+| 56914754 | autozoom ON vs OFF | ~8:00 | 12.83% of 8 cores | 6.11 GB / 64 GB |
+| 56914757 | Cold-start (fully isolated) | ~5:00 | 3.95% of 8 cores | 3.87 GB / 64 GB |
 
 **Explanation**: Jobs are GPU-bound. CPUs handle set_image preprocessing and DSC evaluation; GPU handles all _predict inference. CPU cores sit idle during inference, driving efficiency below 20%. The allocation was over-provisioned (actual usage ~7.5 GB RAM; 4 CPUs / 32 GB would suffice). Allocation was not changed mid-benchmark to preserve config comparability across all jobs.
 
@@ -118,4 +135,6 @@ The combined job (56908464) ran with autozoom=ON. Baseline 0.2882s/object vs ear
 | Baseline (fold='all', autozoom=ON) | 0.2882s | 4.38s | 1.0× | 0.7914 |
 | **torch.compile (fold='all', autozoom=ON)** | **0.2146s** | **3.29s** | **1.34×** | **0.7916** |
 
-**Cold Triton cache**: 22.91s first call. Break-even: ~311 objects (~16 cases). After break-even, all subsequent cases run at 1.34×.
+**Cold Triton cache**: 23.61s first call (/tmp-backed, fully isolated; production /scratch will be higher). Break-even: **~321 objects (~22 cases)** using production gain of 0.0736s/object from job 56908464. After break-even, all subsequent cases run at 1.34×.
+
+⚠️ **Pending**: 1.34× speedup needs 3 repeat combined runs to confirm signal-to-noise (job-to-job baseline spread is 15.7% vs 25.5% effect size). fold='all' parameter count unverified.
