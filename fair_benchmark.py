@@ -4,9 +4,11 @@ Fair GPU-vs-GPU Benchmark — VoxTell
 Measures v0 (no optimizations, GPU) vs v3 (all optimizations, GPU) on the
 SAME hardware platform so the comparison is honest.
 
-v0_gpu: FP16 text encoder on GPU, tile_step=0.5, no embedding cache, no Numba
-v3:     FP16 text encoder on GPU, tile_step=0.75, full cache + Numba
+v0_gpu: INT4 (NF4) text encoder on GPU, tile_step=0.5, no embedding cache, no Numba
+v3:     INT4 (NF4) text encoder on GPU, tile_step=0.75, full cache + Numba
 
+Both arms use identical INT4 (NF4) quantization so the comparison isolates only
+algorithmic gains (Numba preprocessing, crop-to-nonzero, tile_step, embedding cache).
 This addresses the reviewer comment that the original 145.25s baseline was
 measured on CPU (silent VRAM overflow in FP32) which is an unfair comparison.
 """
@@ -122,13 +124,11 @@ torch.cuda.empty_cache()
 print("GPU warm.\n")
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# V0_GPU — No optimizations, but FORCED onto GPU (FP16, tile_step=0.5)
-# This is the fair baseline: same hardware as v3, no algorithmic improvements
-# NOTE: v3 uses INT4 (NF4) text backbone; v0_gpu uses FP16. The comparison
-# therefore includes INT4 quantization as part of v3's advantage.
+# V0_GPU — No algorithmic optimizations (INT4, tile_step=0.5, no cache, numpy)
+# Same INT4 (NF4) text backbone as v3 — precision is held constant.
 # ═══════════════════════════════════════════════════════════════════════════════
 print("=" * 70)
-print("Running v0_gpu (GPU baseline — no optimizations except FP16 GPU fix)")
+print("Running v0_gpu (GPU baseline — INT4, tile_step=0.5, no cache, numpy)")
 print("  tile_step=0.5, no embedding cache, standard numpy preprocessing")
 print("=" * 70)
 
@@ -144,10 +144,17 @@ torch.cuda.synchronize()
 t_pre_v0 = time.perf_counter() - t0
 print(f"  [pre]   {t_pre_v0:.3f}s  shape={tuple(data_v0.shape)}")
 
-# Phase 2: Text embedding (FP16 on GPU, no cache)
-print("  [embed] Loading text backbone (FP16)...")
+# Phase 2: Text embedding — INT4 (NF4), same config as v3, no cache
+print("  [embed] Loading text backbone (INT4 NF4 — same as v3)...")
+from transformers import BitsAndBytesConfig
+_bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_compute_dtype=torch.float16,
+    bnb_4bit_use_double_quant=True,
+    bnb_4bit_quant_type="nf4",
+)
 tokenizer = AutoTokenizer.from_pretrained(TEXT_MODEL, padding_side="left")
-text_backbone = AutoModel.from_pretrained(TEXT_MODEL, dtype=torch.float16).eval().to(DEVICE)
+text_backbone = AutoModel.from_pretrained(TEXT_MODEL, quantization_config=_bnb_config).eval()
 
 t0 = time.perf_counter()
 wrapped = wrap_with_instruction(PROMPTS)
@@ -183,14 +190,13 @@ torch.cuda.empty_cache()
 print(f"\n  v0_gpu TOTAL: {total_v0:.2f}s  ({n_patches_v0} patches, tile_step=0.5)\n")
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# V3 — All optimizations on GPU
-# NOTE: v3 uses INT4 (NF4) text backbone; v0_gpu uses FP16.
-# We measure cold INT4 embedding (cache cleared) so this arm is cold-to-cold
-# with v0_gpu. We also measure the warm cache hit separately.
+# V3 — All algorithmic optimizations on GPU (INT4, tile_step=0.75, Numba, cache)
+# Same INT4 (NF4) backbone as v0_gpu — precision held constant.
+# Cache is cleared before v3 cold-embed so Comparison A is cold-to-cold.
 # ═══════════════════════════════════════════════════════════════════════════════
 print("=" * 70)
 print("Running v3 (all optimizations — Numba + INT4 + cache + tile_step=0.75)")
-print("  v3 text backbone: INT4 (NF4) via bitsandbytes  |  v0_gpu: FP16")
+print("  v3 text backbone: INT4 (NF4)  |  v0_gpu: INT4 (NF4)  — precision matched")
 print("=" * 70)
 
 from voxtell.inference.predictor import VoxTellPredictor, _prompt_cache_path
@@ -252,36 +258,34 @@ print(f"  v3 TOTAL (warm cache): {total_v3_warm:.2f}s\n")
 # ═══════════════════════════════════════════════════════════════════════════════
 # Results
 # ═══════════════════════════════════════════════════════════════════════════════
-speedup_cold  = total_v0 / total_v3_cold   # cold FP16 → cold INT4 (no cache effect)
-speedup_warm  = total_v0 / total_v3_warm   # cold FP16 → warm INT4 (full stack)
-int4_gain     = t_embed_v0 / t_embed_v3_cold  # FP16 vs INT4 text encoding
+speedup_cold  = total_v0 / total_v3_cold   # cold INT4 → cold INT4 (no cache effect; pure algo gain)
+speedup_warm  = total_v0 / total_v3_warm   # cold INT4 → warm INT4 (full v3 stack)
+cache_gain    = t_embed_v3_cold / t_embed_v3_warm  # cache speedup on embed only
 
 print("=" * 70)
 print("FAIR GPU-vs-GPU COMPARISON SUMMARY")
 print("=" * 70)
 print()
-print("  Comparison A — cold-to-cold (controls for cache; isolates INT4 + algo gains)")
-print(f"  {'Metric':<28} {'v0_gpu (FP16)':>14} {'v3 (INT4)':>12}")
+print("  Comparison A — cold-to-cold, same INT4 precision (pure algorithmic gain)")
+print(f"  {'Metric':<28} {'v0_gpu (INT4)':>14} {'v3 (INT4)':>12}")
 print("  " + "-" * 56)
 print(f"  {'Preprocessing':<28} {t_pre_v0:>13.3f}s {t_pre_v3:>11.3f}s")
-print(f"  {'Text embedding (cold)':<28} {t_embed_v0:>13.3f}s {t_embed_v3_cold:>11.3f}s  ← INT4 vs FP16")
+print(f"  {'Text embedding (cold INT4)':<28} {t_embed_v0:>13.3f}s {t_embed_v3_cold:>11.3f}s")
 print(f"  {'Sliding window':<28} {t_slide_v0:>13.3f}s {t_slide_v3:>11.3f}s")
 print(f"  {'Postprocessing':<28} {t_post_v0:>13.3f}s {t_post_v3:>11.3f}s")
 print(f"  {'Patches':<28} {n_patches_v0:>14} {len(slicers_v3):>12}")
 print("  " + "-" * 56)
 print(f"  {'TOTAL':<28} {total_v0:>13.2f}s {total_v3_cold:>11.2f}s")
-print(f"  Speedup (cold, no cache): {speedup_cold:.1f}×")
+print(f"  Speedup (cold, no cache): {speedup_cold:.1f}×  ← pure algorithmic, precision-matched")
 print()
 print("  Comparison B — with embedding cache (production warm-query use case)")
-print(f"  {'Text embedding (warm)':<28} {t_embed_v0:>13.3f}s {t_embed_v3_warm:>11.3f}s")
+print(f"  {'Text embedding (warm cache)':<28} {t_embed_v0:>13.3f}s {t_embed_v3_warm:>11.3f}s")
 print(f"  {'TOTAL':<28} {total_v0:>13.2f}s {total_v3_warm:>11.2f}s")
 print(f"  Speedup (warm cache):     {speedup_warm:.1f}×")
 print()
-print(f"  INT4 text encoding gain (cold FP16 → cold INT4): {int4_gain:.1f}×")
-print(f"  Cache gain (cold INT4 → warm INT4):               {t_embed_v3_cold/t_embed_v3_warm:.1f}×")
+print(f"  Cache gain on embedding (cold → warm INT4): {cache_gain:.1f}×")
 print()
-print("  Note: INT4 (NF4) is active in v3 by default (bitsandbytes NF4).")
-print("        DSC impact of INT4 quantization is NOT separately measured.")
+print("  Both arms: INT4 (NF4) via bitsandbytes. DSC impact of INT4 not measured.")
 print(f"  Original reported speedup: 26.0×  (CPU baseline — unfair comparison)")
 print("=" * 70)
 
@@ -299,16 +303,17 @@ lines = [
     "=" * 40,
     f"GPU: {gpu_name}",
     "",
-    f"v0_gpu total : {total_v0:.2f}s  (FP16, tile_step=0.5, no cache, numpy preprocess)",
-    f"v3 cold total: {total_v3_cold:.2f}s  (INT4, tile_step=0.75, no cache, Numba)",
-    f"v3 warm total: {total_v3_warm:.2f}s  (INT4, tile_step=0.75, cache hit, Numba)",
+    f"v0_gpu total : {total_v0:.2f}s  (INT4 NF4, tile_step=0.5, no cache, numpy preprocess)",
+    f"v3 cold total: {total_v3_cold:.2f}s  (INT4 NF4, tile_step=0.75, no cache, Numba)",
+    f"v3 warm total: {total_v3_warm:.2f}s  (INT4 NF4, tile_step=0.75, cache hit, Numba)",
     "",
-    f"Speedup cold (cold FP16 -> cold INT4, no cache): {speedup_cold:.1f}x",
-    f"Speedup warm (cold FP16 -> cached INT4):         {speedup_warm:.1f}x",
-    f"INT4 text encoding gain (FP16 cold -> INT4 cold): {int4_gain:.1f}x",
+    f"Speedup cold (cold INT4 -> cold INT4, no cache, pure algo): {speedup_cold:.1f}x",
+    f"Speedup warm (cold INT4 -> cached INT4, full stack):        {speedup_warm:.1f}x",
+    f"Cache gain on embedding (cold -> warm INT4):                {cache_gain:.1f}x",
     "",
+    "Note: Both arms use identical INT4 (NF4) via bitsandbytes. Precision-matched.",
     "Note: Original 26x used CPU baseline (FP32 text encoder VRAM overflow).",
-    "Note: INT4 (NF4) active in v3 by default. DSC impact NOT measured.",
+    "Note: DSC impact of INT4 quantization NOT measured.",
     "Note: GPU warmup pass run before v0_gpu arm to initialize CUDA context.",
 ]
 Path(out_file).write_text("\n".join(lines))
