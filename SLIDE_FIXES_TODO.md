@@ -44,7 +44,32 @@ Report both numbers that job prints:
 Label A as algorithmic. Do not call it "fair GPU-vs-GPU" without saying what is
 held constant.
 
-## 4. RTX "1.3× algorithmic gain" — measured with the defective methodology
+## 4. RTX number — RERUN DONE, cite n=9 mean with range
+
+**Superseded**: the April `3.10s → 2.38s = 1.3×` at `make_slides.py:260` and `:564`.
+
+Reran with the corrected script (warmed GPU, verified-cold embed, both arms INT4).
+Nine comparable runs on the RTX 4070 SUPER:
+
+| | value |
+|---|---|
+| Comparison A (cold-to-cold, algorithmic) | **mean 1.7×, range 1.5–2.0× (n=9)** |
+| Comparison B (warm cache) | mean ~1.9×, range 1.6–2.1× |
+| Sliding window alone | mean 1.91×, range 1.83–2.01× (n=5) |
+
+**Cite the mean with the range, never a point estimate.** The last five runs
+verified the embed cache was empty before and written after each cold measurement.
+
+Two caveats that must travel with this number:
+
+1. **Not comparable to April's 2.38s.** `accelerate` was installed partway through,
+   so v3 now genuinely runs INT4 where it previously fell back to FP16 silently.
+   Different quantity, not a correction of the old one.
+2. **Measured on the MNI brain**, where tile_step and Numba both have no room to
+   act (see items 6 and 7). The CT run is the number that belongs beside the
+   nnInteractive results.
+
+### Superseded analysis (kept so the reasoning is auditable)
 
 `make_slides.py:260` and `make_slides.py:564` cite
 `v0_gpu 3.10s → v3 2.38s = 1.3× algorithmic gain` from `fair_benchmark_results.txt`.
