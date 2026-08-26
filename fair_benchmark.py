@@ -33,13 +33,23 @@ from voxtell.utils.fast_preprocess import numba_crop_to_nonzero, numpy_zscore_no
 import os
 _DEFAULT_IMAGE = r"C:\Users\brian\Downloads\mni_icbm152_t1_tal_nlin_sym_09a.nii.gz"
 _CLUSTER_IMAGE = "/scratch/brianx7/mni_icbm152_t1_tal_nlin_sym_09a.nii.gz"
-IMAGE_PATH = _CLUSTER_IMAGE if os.path.exists(_CLUSTER_IMAGE) else _DEFAULT_IMAGE
+
+# BENCH_IMAGE lets this run against a CVPR CT volume instead of the MNI brain.
+# The brain is 189x233x197 against a 192^3 patch, so the sliding-window grid is
+# 4 patches at ANY tile_step and Numba sees arrays too small to pay for itself —
+# neither optimization has room to act. The challenge data (and every
+# nnInteractive number) is abdominal CT, so measuring there is the like-for-like
+# comparison.  e.g. BENCH_IMAGE=/scratch/brianx7/cvpr_val/3D_val_npz/CT_xxx.npz
+IMAGE_PATH = os.environ.get("BENCH_IMAGE") or (
+    _CLUSTER_IMAGE if os.path.exists(_CLUSTER_IMAGE) else _DEFAULT_IMAGE
+)
 
 _DEFAULT_MODEL = r"C:\Users\brian\OneDrive\Desktop\Code\VoxTell-main\models\voxtell_v1.1"
 _CLUSTER_MODEL = "/scratch/brianx7/VoxTell-main/models/voxtell_v1.1"
 MODEL_DIR  = _CLUSTER_MODEL if os.path.exists(_CLUSTER_MODEL) else _DEFAULT_MODEL
 
-PROMPTS    = ["brain"]
+# "brain" is meaningless on an abdominal CT — set BENCH_PROMPTS to match the image.
+PROMPTS    = [p.strip() for p in os.environ.get("BENCH_PROMPTS", "brain").split(",") if p.strip()]
 DEVICE     = torch.device("cuda:0")
 TEXT_MODEL = "Qwen/Qwen3-Embedding-4B"
 
@@ -54,19 +64,32 @@ print(f"Prompts: {PROMPTS}\n")
 # removed now. Otherwise a crashed run leaves the old numbers on disk looking fresh.
 gpu_name = torch.cuda.get_device_name(0)
 if "H100" in gpu_name:
-    out_file = "fair_benchmark_h100_results.txt"
+    _gpu_tag = "h100"
 elif "RTX" in gpu_name or "GeForce" in gpu_name:
-    out_file = "fair_benchmark_results.txt"
+    _gpu_tag = "rtx"
 else:
-    out_file = f"fair_benchmark_{gpu_name.replace(' ', '_')}_results.txt"
+    _gpu_tag = gpu_name.replace(" ", "_")
+# Tag the image too — a CT result must never overwrite a brain result, since the
+# two are not comparable and mixing them is how the wrong number reaches a slide.
+_img_tag = "ct_" + Path(IMAGE_PATH).stem.replace(".nii", "") if IMAGE_PATH.endswith(".npz") else "brain"
+out_file = f"fair_benchmark_{_gpu_tag}_{_img_tag}_results.txt"
 if Path(out_file).exists():
     Path(out_file).unlink()
     print(f"Removed stale {out_file} from a previous run.\n")
 
 # ── Load image (shared between both runs) ─────────────────────────────────────
 print("Loading image...")
-raw_img, _ = NibabelIOWithReorient().read_images([IMAGE_PATH])
-print(f"  Shape: {raw_img.shape}\n")
+if IMAGE_PATH.endswith(".npz"):
+    # CVPR validation format: 'imgs' is a 3D volume; add the channel axis so the
+    # shape matches what NibabelIOWithReorient returns for the .nii.gz path.
+    _npz = np.load(IMAGE_PATH, allow_pickle=True)
+    raw_img = _npz["imgs"][None].astype(np.float32)
+    print(f"  Loaded from npz key 'imgs'")
+else:
+    raw_img, _ = NibabelIOWithReorient().read_images([IMAGE_PATH])
+print(f"  Shape: {raw_img.shape}")
+_vox = int(np.prod(raw_img.shape[1:]))
+print(f"  Voxels: {_vox:,}\n")
 
 # ── Load segmentation network (shared) ────────────────────────────────────────
 print("Loading segmentation network...")
@@ -329,6 +352,9 @@ else:
 print("=" * 70)
 print("FAIR GPU-vs-GPU COMPARISON SUMMARY")
 print("=" * 70)
+print(f"  Image : {Path(IMAGE_PATH).name}  {tuple(raw_img.shape[1:])}  ({_vox:,} voxels)")
+print(f"  Prompts: {PROMPTS}")
+print(f"  Patch : {patch_size}")
 print()
 print("  Comparison A — cold-to-cold, same INT4 precision (pure algorithmic gain)")
 print(f"  {'Metric':<28} {'v0_gpu (INT4)':>14} {'v3 (INT4)':>12}")
@@ -375,6 +401,9 @@ lines = [
     "Fair GPU-vs-GPU Benchmark Results",
     "=" * 40,
     f"GPU: {gpu_name}",
+    f"Image: {Path(IMAGE_PATH).name}  shape={tuple(raw_img.shape[1:])}  voxels={_vox:,}",
+    f"Prompts: {PROMPTS}",
+    f"Patch size: {patch_size}",
     "",
     f"v0_gpu total : {total_v0:.2f}s  (INT4 NF4, tile_step=0.5, no cache, numpy preprocess)",
     f"v3 cold total: {total_v3_cold:.2f}s  (INT4 NF4, tile_step=0.75, no cache, Numba)",
