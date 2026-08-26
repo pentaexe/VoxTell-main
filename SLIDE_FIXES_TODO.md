@@ -1,5 +1,39 @@
 # Slide fixes — do before finalizing the deck
 
+## FINAL NUMBERS (jobs 56964410 / 56964411 / 56964412, all completed)
+
+**Cite this one: VoxTell v3 vs v0 on CT = 2.6× (cold), 2.7× (warm cache).**
+Job 56964411, `CT_AMOS_amos_0018.npz`, 63×512×512, prompt read from the file
+(`"CT imaging of the spleen within the abdomen"`). Both arms INT4 (NF4), GPU and
+text backbone and sliding-window path all pre-warmed, embed cache verified empty
+before the cold measurement. Patches 25 → 9. Sliding window 3.083s → 1.059s = 2.91×.
+
+**The headline speedup fell four times as methodology tightened:**
+
+| Reported | Why it was wrong |
+|---|---|
+| 26.0× | CPU baseline — FP32 text encoder silently overflowed VRAM |
+| 17.6× | No GPU warmup; v3 embed was a cache hit; FP16 vs INT4 |
+| 7.1× | v0 ran first and absorbed text-backbone + cuDNN first-use cost |
+| **1.0× (brain) / 2.6× (CT)** | current — warmed, precision-matched, verified cold |
+
+**On the MNI brain the H100 shows 1.0× — no gain at all** (job 56964410), and v3's
+sliding window is *slower* (0.91×). That is not a failure of the optimizations; it
+is a 189×233×197 volume against a 192³ patch, where tile_step has 4 patches at any
+setting and the GPU is fast enough that v3's extra bookkeeping dominates. It is,
+however, proof that the brain volume cannot support any speedup claim.
+
+**INT4 vs FP16 output agreement: DSC 0.9716**, INT4 segmenting 5.52% fewer voxels
+(1,828,296 vs 1,935,162), n=1. INT4 text encoding is 1.5× faster than FP16 on the
+forward pass (0.088s → 0.058s, backbone pre-loaded). The ~2.8% disagreement and the
+systematic under-segmentation are real and must be stated, not rounded to "identical".
+
+**RTX 4070 SUPER, brain, n=5 verified cold: 1.7× (range 1.6–1.8×).** Note the RTX
+shows a gain where the H100 shows none — the H100 is fast enough that fixed overhead
+dominates on a small volume. Worth one line: the optimizations matter more on
+weaker hardware.
+
+
 Deferred deliberately until all numbers were confirmed. Each item below is a
 specific line in `make_slides.py`, not a general "review the slides" note.
 
