@@ -139,9 +139,8 @@ txbox(s, 'torch.compile  ·  Embedding Cache  ·  Sliding Window  ·  Numba Prep
 txbox(s, 'Brian Xiao  ·  rrg-jma  ·  Fir cluster (Alliance Canada)',
       0.9, 6.6, 10, 0.4, size=10, color=MUTED)
 
-# DRAFT watermark
-txbox(s, 'DRAFT — nnInteractive results pending 3-run variance confirmation',
-      0.5, 6.9, 12, 0.45, size=10, color=AMBER, align=PP_ALIGN.CENTER)
+txbox(s, 'Brian Xiao  ·  Aug 2026',
+      0.9, 6.9, 10, 0.4, size=10, color=MUTED)
 
 # ── SLIDE 2: What is Medical Image Segmentation ────────────────────────────
 s = add_slide()
@@ -412,12 +411,12 @@ s = add_slide()
 set_bg(s, SLIDE_BG)
 slide_header(s, 'nnInteractive — Speedup Results', '09 / 12', TEAL)
 
-txbox(s, 'Job 56908464 · fold=\'all\', autozoom=ON · 20 CT cases · 294 objects · H100 MIG 3g.40gb',
+txbox(s, 'Jobs 56923894–896 (n=3 repeats) + 56908464 · fold=\'all\', autozoom=ON · 20 CT cases · 294 objects · H100 MIG 3g.40gb',
       0.5, 0.9, 12, 0.35, size=10, color=MUTED)
 
 # Big stats
 for val, lbl, col, x in [
-    ('1.34×', 'per-object speedup\n(warm inference)', TEAL, 0.5),
+    ('1.33×', 'per-object speedup\n(n=3: 1.28–1.39×)', TEAL, 0.5),
     ('0.288s', 'baseline _predict\n(no compile)', MUTED, 3.5),
     ('0.215s', 'compiled _predict\n(fully warm)', TEAL, 6.5),
     ('1.33×', 'case-level speedup\n(~15-object case)', TEAL, 9.5),
@@ -432,7 +431,7 @@ for c, h in enumerate(['Setting', 'set_image', '_predict (warm)', '~15-obj case'
     cell_set(tbl.cell(0, c), h, bold=True, bg=NAVY, color=WHITE, size=11)
 res_rows = [
     ('Baseline (fold=\'all\', autozoom=ON)', '0.345s', '0.288s', '4.38s', '1.0×'),
-    ('torch.compile (fold=\'all\', autozoom=ON)', '0.345s', '0.215s', '3.29s', '1.34×'),
+    ('torch.compile (fold=\'all\', autozoom=ON)', '0.345s', '0.215s', '3.30s', '1.33×'),
 ]
 for r, row in enumerate(res_rows):
     bg = alt_bg if r == 0 else RGBColor(0xE0, 0xF2, 0xEE)
@@ -441,8 +440,9 @@ for r, row in enumerate(res_rows):
         bold = r == 1 and c >= 2
         cell_set(tbl.cell(r+1, c), val, bg=bg, size=11, color=col, bold=bold)
 
-txbox(s, '⚠  Speedup pending 3 repeat jobs for variance confirmation (within-job paired ratio is stable)',
-      0.5, 5.0, 12, 0.4, size=10, color=AMBER)
+txbox(s, '✓  Confirmed across n=3 repeats (jobs 56923894–896). Range: 1.28×–1.39×. '
+         'DSC Δ ≤ +0.0004 across all runs — accuracy stable.',
+      0.5, 5.0, 12, 0.4, size=10, color=TEAL)
 
 
 # ── SLIDE 10: nnInteractive Accuracy ──────────────────────────────────────
@@ -498,40 +498,40 @@ s = add_slide()
 set_bg(s, SLIDE_BG)
 slide_header(s, 'nnInteractive — Cold Start & Break-even', '11 / 12', TEAL)
 
-txbox(s, 'Job 56914757 · fully isolated /tmp inductor cache · all three env vars set before import torch',
+txbox(s, 'Cold-start measured in two configs: /tmp local cache (job 56914757) and /scratch NFS production cache',
       0.5, 0.9, 11, 0.35, size=10, color=MUTED)
 
 tbl = add_table(s, 7, 2, 0.5, 1.35, 7.5, 3.0)
 cell_set(tbl.cell(0, 0), 'Metric', bold=True, bg=NAVY, color=WHITE, size=11)
 cell_set(tbl.cell(0, 1), 'Value', bold=True, bg=NAVY, color=WHITE, size=11)
 cs_rows = [
-    ('Triton cold-start (run 1)', '23.61s'),
+    ('Triton cold-start — /tmp local (job 56914757)', '23.61s  (lower bound)'),
+    ('Triton cold-start — /scratch NFS (production)', '71.4s'),
     ('Residual (run 2)', '0.513s'),
     ('Fully warm mean (runs 3–6)', '0.125s'),
-    ('Warm gain per object (from job 56908464)', '0.0736s'),
-    ('Break-even (production gain)', '~321 objects (~22 cases)'),
-    ('First case cold vs warm baseline', '~25.4s  vs  ~4.38s'),
+    ('Mean warm gain per object (n=3, jobs 56923894–896)', '0.0706s'),
+    ('Break-even (production, /scratch cache)', '~1,011 objects (~69 cases)'),
 ]
 for r, (a, b) in enumerate(cs_rows):
     bg = alt_bg if r % 2 == 0 else WHITE
-    hl = r == 4  # break-even row
+    hl = r == 5  # break-even row
     cell_set(tbl.cell(r+1, 0), a, bg=bg, size=11)
     cell_set(tbl.cell(r+1, 1), b, bg=bg, size=11,
              color=TEAL if hl else None, bold=hl)
 
-txbox(s, 'Break-even = 23.61s ÷ 0.0736s/object = 321 objects = 22 cases',
+txbox(s, 'Break-even (/scratch): 71.4s ÷ 0.0706s/object = ~1,011 objects = ~69 cases',
       0.5, 4.5, 9, 0.4, size=12, bold=True, color=TEAL)
 
-txbox(s, 'Note: /tmp is node-local fast storage. Production Triton cache on /scratch\n'
-         '(network FS) will read higher. After break-even, all subsequent jobs run at 1.34×.\n'
-         'Shared cache at /scratch/brianx7/cache was not modified.',
+txbox(s, '/tmp lower bound: 23.61s ÷ 0.0706s = ~334 objects = ~23 cases. '
+         'After break-even, all subsequent objects run at 1.33×.\n'
+         'The Triton cache on /scratch persists across jobs — cost is once per environment install.',
       0.5, 5.0, 9, 0.8, size=10, color=MUTED)
 
-txbox(s, '~22', 10.2, 2.1, 2.7, 1.0, size=54, bold=True, color=TEAL,
+txbox(s, '~69', 10.2, 2.1, 2.7, 1.0, size=54, bold=True, color=TEAL,
       align=PP_ALIGN.CENTER)
 txbox(s, 'cases to break even', 9.9, 3.1, 3.3, 0.4, size=11, color=MUTED,
       align=PP_ALIGN.CENTER)
-txbox(s, '(~321 objects)', 9.9, 3.5, 3.3, 0.4, size=10, color=MUTED,
+txbox(s, '(production, /scratch)', 9.9, 3.5, 3.3, 0.4, size=10, color=MUTED,
       align=PP_ALIGN.CENTER)
 
 
@@ -549,7 +549,7 @@ summary_rows = [
     ('', 'Sliding window overlap', 'tile_step 0.5 → 0.75', '3.6× window', '+0.0006'),
     ('', 'Embedding cache', 'LRU memory + SHA-256 disk', '18.7× warm', 'Identical'),
     ('', 'Numba preprocessing', '@njit(parallel=True)', '1.4× preprocess', 'Unchanged'),
-    ('nnInteractive', 'torch.compile', 'compile(network, mode=\'reduce-overhead\')', '1.34× / object *', '+0.0002'),
+    ('nnInteractive', 'torch.compile', 'compile(network, mode=\'reduce-overhead\')', '1.33× / object (n=3)', '+0.0002'),
 ]
 for r, row in enumerate(summary_rows):
     bg = RGBColor(0xFD, 0xF5, 0xE4) if r < 4 else RGBColor(0xE0, 0xF2, 0xEE)
@@ -567,12 +567,9 @@ txbox(s,
 
 txbox(s, 'nnInteractive (H100 MIG 3g.40gb, Fir cluster, job 56908464)', 0.5, 5.35, 8, 0.32, size=10, bold=True, color=TEAL)
 txbox(s,
-      '0.288s → 0.215s per object. DSC 0.7914 → 0.7916 (+0.0002). '
-      'Speed and accuracy from the same job, same config.',
+      '0.288s → 0.215s per object. Mean speedup 1.33× (n=3: 1.28–1.39×). '
+      'DSC Δ ≤ +0.0004. Speed and accuracy from same job, same config. Break-even ~69 cases (/scratch).',
       0.5, 5.7, 12, 0.45, size=11, color=NAVY)
-
-txbox(s, '* nnInteractive 1.34× is n=1. Three serialized repeat jobs (nni_rep, singleton) pending — update before presentation.',
-      0.5, 6.25, 12, 0.4, size=10, color=AMBER)
 
 
 # ── Save ───────────────────────────────────────────────────────────────────

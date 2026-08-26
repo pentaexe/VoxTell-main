@@ -63,24 +63,29 @@ session.network = torch.compile(session.network, mode='reduce-overhead')
 
 ---
 
-### Cold-Start Timing (job 56914757 — fully isolated, all three cache env vars set before torch import)
+### Cold-Start Timing
 
-`XDG_CACHE_HOME`, `TORCH_HOME`, and `TORCHINDUCTOR_CACHE_DIR` all pointed to a fresh per-job `/tmp` dir before `import torch`. Script asserts inductor cache is empty before compile. Shared cache at `/scratch/brianx7/cache` unchanged.
+Two measurements, different cache backends:
 
-| Metric | Value |
-|--------|-------|
-| Triton cold-start (run 1) | **23.61s** |
-| Residual (run 2) | 0.513s |
-| Fully warm mean (runs 3–6, single object) | 0.125s |
-| Warm gain per object (production, from job 56908464) | **0.0736s** (0.2882 − 0.2146) |
-| Break-even (using production gain) | **~321 objects (~22 cases)** |
-| First case cold (~14.7 obj) | **~25.4s** vs **~4.38s** baseline |
+| Metric | /tmp local (job 56914757) | /scratch NFS (production) |
+|--------|--------------------------|--------------------------|
+| Triton cold-start | **23.61s** (lower bound) | **71.4s** |
+| Residual (run 2) | 0.513s | — |
+| Fully warm mean (runs 3–6) | 0.125s | — |
 
-**Break-even derivation**: 23.61s ÷ 0.0736s/object = 321 objects; 321 ÷ 14.7 obj/case = 22 cases.
+`/tmp` is node-local fast storage. `/scratch` is the NFS-backed production cache (`XDG_CACHE_HOME=/scratch/brianx7/cache`). The 71.4s figure was measured empirically for the /scratch config and hardcoded in `nni_combined.py`.
 
-Note: `/tmp` is node-local fast storage. Production Triton cache sits on `/scratch` (network FS), so production cold-start will read somewhat higher than 23.61s. The 23.61s is therefore a lower bound for a from-scratch production deployment.
+**Break-even (production, using /scratch cache and n=3 mean gain):**
 
-**Noise note**: Repeat runs of the same config (fold='all', autozoom=ON, baseline) give 0.2882s (job 56908464) and 0.2491s (job 56914754) — 15.7% spread on an identical measurement. This is more than half the claimed 25.5% effect size. Three repeat combined jobs (56908464 config) are needed to confirm 1.34× is a stable result rather than a favorable draw.
+Mean warm gain = (0.0813 + 0.0594 + 0.0711) / 3 = **0.0706s/object** (jobs 56923894–896)
+
+71.4s ÷ 0.0706s/object = **~1,011 objects ÷ 14.7 obj/case = ~69 cases**
+
+Range across 3 jobs: 60–82 cases (driven by per-job gain variation: 0.059–0.081s).
+
+/tmp lower bound: 23.61s ÷ 0.0706s = ~334 objects = ~23 cases.
+
+The Triton cache persists on `/scratch` across jobs — the cold-start cost is paid once per environment install, not per job.
 
 ---
 
@@ -121,20 +126,32 @@ Autozoom is also not the explanation for the 0.108s (June) vs 0.288s (current) g
 | 56908464 | Combined latency + DSC | 4:22 | 18.75% of 8 cores | 7.57 GB / 64 GB |
 | 56914754 | autozoom ON vs OFF | ~8:00 | 12.83% of 8 cores | 6.11 GB / 64 GB |
 | 56914757 | Cold-start (fully isolated) | ~5:00 | 3.95% of 8 cores | 3.87 GB / 64 GB |
+| 56923894 | Repeat 1 (n=3 variance confirmation) | 5:46 | 13.69% of 8 cores | 7.40 GB / 64 GB |
+| 56923895 | Repeat 2 (warm Triton cache hit) | 3:55 | 20.27% of 8 cores | 6.48 GB / 64 GB |
+| 56923896 | Repeat 3 | 5:06 | 16.09% of 8 cores | 7.34 GB / 64 GB |
 
 **Explanation**: Jobs are GPU-bound. CPUs handle set_image preprocessing and DSC evaluation; GPU handles all _predict inference. CPU cores sit idle during inference, driving efficiency below 20%. The allocation was over-provisioned (actual usage ~7.5 GB RAM; 4 CPUs / 32 GB would suffice). Allocation was not changed mid-benchmark to preserve config comparability across all jobs.
 
 ---
 
-## Summary of Final Results
+## Summary of Final Results — CONFIRMED (n=3)
 
 **Config**: fold='all', do_autozoom=True, torch_n_threads=os.cpu_count(), H100 MIG 3g.40gb, Fir cluster
 
-| Setting | _predict warm | Per-case | Speedup | DSC |
-|---------|--------------|----------|---------|-----|
-| Baseline (fold='all', autozoom=ON) | 0.2882s | 4.38s | 1.0× | 0.7914 |
-| **torch.compile (fold='all', autozoom=ON)** | **0.2146s** | **3.29s** | **1.34×** | **0.7916** |
+### Per-job speedup (within-job paired ratio — stable across runs)
 
-**Cold Triton cache**: 23.61s first call (/tmp-backed, fully isolated; production /scratch will be higher). Break-even: **~321 objects (~22 cases)** using production gain of 0.0736s/object from job 56908464. After break-even, all subsequent cases run at 1.34×.
+| Job | Baseline _predict | Compiled _predict | Speedup | DSC Δ |
+|-----|------------------|------------------|---------|-------|
+| 56908464 (original) | 0.2882s | 0.2146s | 1.34× | +0.0002 |
+| 56923894 (repeat 1) | 0.2881s | 0.2068s | **1.39×** | +0.0000 |
+| 56923895 (repeat 2) | 0.2722s | 0.2128s | **1.28×** | +0.0004 |
+| 56923896 (repeat 3) | 0.2947s | 0.2236s | **1.32×** | +0.0002 |
+| **Mean (repeats only)** | | | **1.33×** | **≤ +0.0004** |
 
-⚠️ **Pending**: 1.34× speedup needs 3 repeat combined runs to confirm signal-to-noise (job-to-job baseline spread is 15.7% vs 25.5% effect size). fold='all' parameter count unverified.
+Mean includes only the 3 repeat jobs (56923894–896), not the original exploratory run.
+
+**Cold Triton cache**: 71.4s on /scratch (production NFS); 23.61s on /tmp (local fast storage, lower bound).  
+**Break-even**: ~1,011 objects (~69 cases) using /scratch and mean gain of 0.0706s/object.  
+After break-even, all subsequent objects run at 1.33×. Triton cache persists across jobs on /scratch — cost is once per environment install.
+
+**fold='all' verified**: `ls /scratch/brianx7/nnInteractive_weights/nnInteractive_v1.0/` shows `fold_all` directory exists.
