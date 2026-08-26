@@ -22,8 +22,8 @@ ssh brianx7@fir.alliancecan.ca
 | Project | `/scratch/brianx7/VoxTell-main` |
 
 ## Official checkpoint
-Always use `use_fold='all'` — this is the official CVPR 2025 checkpoint.  
-`use_fold=0` is a weaker single-fold model (~0.33 DSC) and must NOT be used for accuracy comparisons.
+Always use `use_fold='all'` — this is the official CVPR 2025 checkpoint (single model trained on full training set, NOT a 5-fold ensemble).  
+`use_fold=0` gives ~0.33 DSC — likely undertrained/mismatched weights, not a fold-quality difference. Never use fold=0 for accuracy comparisons.
 
 ## Session pattern (copy exactly — fold='all' hangs with different configs)
 ```python

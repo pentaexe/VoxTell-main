@@ -50,7 +50,9 @@ session.network = torch.compile(session.network, mode='reduce-overhead')
 - Triton kernel compilation cold-start: **71.4s** (one-time; kernels cached to scratch after first run)
 - Run 1 after 1 warmup: 0.388s (residual compilation) — requires 2nd warmup call to stabilize
 - Runs 2–3 after 2 warmups: **0.066–0.069s** (fully warm)
-- 15-object case with compile: 0.345 + 15 × 0.069 = **1.38s** (vs 1.96s baseline, **1.42× case-level speedup**)
+- 15-object case with compile (warm Triton cache): 0.345 + 15 × 0.069 = **1.38s** (vs 1.96s baseline, **1.42× case-level speedup**)
+- **Cold Triton cache**: first case = ~73s (71.4s compile + 1.38s inference). Break-even vs baseline: ~1,830 objects (~122 cases). After that, all subsequent cases benefit from the 1.42× speedup.
+- Practical deployment: Triton cache persists on scratch across jobs. Cache is populated on first run and reused thereafter — cold-start cost is one-time per cluster environment.
 
 **Note**: `N_WARMUP=2` required (not 1) for compiled sessions. First warmup triggers Triton compilation (71.4s); second warmup stabilizes kernel dispatch (0.388s → 0.069s).
 
@@ -66,11 +68,9 @@ session.network = torch.compile(session.network, mode='reduce-overhead')
 
 ---
 
-### O2 — Reduce ensemble (fold=0 only vs fold='all')
+### O2 — fold='all' vs fold=0 (SUPERSEDED)
 
-**Target**: Understand quality/speed tradeoff of single fold vs 5-fold ensemble  
-**Method**: Profile fold=0 (0.108s) vs fold='all' (~0.54s estimated = 5×)  
-**Status**: fold='all' hangs in v1.1.5 with v1.0 checkpoint (possible version incompatibility). Benchmark uses fold=0.
+**Correction**: `fold='all'` in nnU-Net is a single model trained on the full training set — it is NOT a 5-fold ensemble. The previous estimate of "~0.54s = 5×" was incorrect and has been removed. Since it is the same architecture and patch count as fold=0, per-object latency is identical (~0.108s baseline). The 0.33 DSC seen with fold=0 vs 0.79 with fold='all' likely reflects undertrained or mismatched weights in the fold_0 directory, not a fold-quality difference. **Do not present fold=0 vs fold='all' as a speed/quality tradeoff.**
 
 ---
 
@@ -93,9 +93,13 @@ session.network = torch.compile(session.network, mode='reduce-overhead')
 
 ## Summary of Results
 
-| Setting | _predict (warm) | 15-obj case | vs Baseline |
-|---------|----------------|-------------|-------------|
-| Baseline (fold='all', no compile) | 0.108s | 1.96s | 1.0× |
-| **torch.compile (fold='all')** | **0.069s** | **1.38s** | **1.42×** |
+⚠️ **Config note**: Latency numbers (0.108s/0.069s) were measured with fold=0 + autozoom=OFF. DSC numbers were measured with fold='all' + autozoom=ON. Since fold='all' is the same architecture as fold=0, latency is expected to be identical — but a combined single job measuring both latency and DSC under the same config (fold='all', autozoom=ON) is needed to confirm this before presenting as final results.
 
-**DSC (fold='all', 20 cases, 294 objects):** Baseline 0.7913 → torch.compile 0.7907 (−0.0006, accuracy maintained)
+| Setting | _predict (warm) | 15-obj case (warm cache) | Cold-cache first case | vs Baseline |
+|---------|----------------|--------------------------|----------------------|-------------|
+| Baseline (fold='all', no compile) | 0.108s | 1.96s | 1.96s | 1.0× |
+| **torch.compile (fold='all')** | **0.069s** | **1.38s** | **~73s** | **1.42× (warm)** |
+
+**Break-even** (cold Triton cache): ~1,830 objects (~122 cases). After break-even, all subsequent cases run at 1.42×.
+
+**DSC (fold='all', 20 cases, 294 objects, job 55034701):** Baseline 0.7913 → torch.compile 0.7907 (−0.0006, accuracy maintained)
