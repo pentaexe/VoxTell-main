@@ -114,8 +114,8 @@ def run_sliding_window(net, data, embeddings):
         pred_logits = pred_logits[(slice(None), *slicer_revert[1:])]
     return pred_logits, len(slicers)
 
-def embed(backbone, prompts):
-    tokenizer = AutoTokenizer.from_pretrained(TEXT_MODEL, padding_side="left")
+def embed(backbone, prompts, tokenizer):
+    # tokenizer pre-loaded outside timer — measures forward pass only, not model/tokenizer load
     wrapped = wrap_with_instruction(prompts)
     tokens = tokenizer(wrapped, padding=True, truncation=True, max_length=8192, return_tensors="pt")
     tokens = {k: v.to(DEVICE) for k, v in tokens.items()}
@@ -135,6 +135,11 @@ del _net_warm, _dummy
 torch.cuda.empty_cache()
 print("GPU warm.\n")
 
+# ── Tokenizer (shared, loaded once outside any timed section) ─────────────────
+print("Loading tokenizer...")
+tokenizer = AutoTokenizer.from_pretrained(TEXT_MODEL, padding_side="left")
+print("Tokenizer ready.\n")
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # ARM 1 — FP16 text backbone
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -144,11 +149,12 @@ print("=" * 70)
 print("  Loading FP16 backbone...")
 backbone_fp16 = AutoModel.from_pretrained(TEXT_MODEL, dtype=torch.float16).eval().to(DEVICE)
 
+# Timer measures forward pass only — backbone and tokenizer already loaded above
 t0 = time.perf_counter()
-embeddings_fp16 = embed(backbone_fp16, PROMPTS)
+embeddings_fp16 = embed(backbone_fp16, PROMPTS, tokenizer)
 torch.cuda.synchronize()
 t_embed_fp16 = time.perf_counter() - t0
-print(f"  [embed FP16]  {t_embed_fp16:.3f}s")
+print(f"  [embed FP16 forward]  {t_embed_fp16:.3f}s  (forward pass only, backbone pre-loaded)")
 
 del backbone_fp16
 torch.cuda.empty_cache()
@@ -182,11 +188,12 @@ _bnb_config = BitsAndBytesConfig(
 print("  Loading INT4 backbone...")
 backbone_int4 = AutoModel.from_pretrained(TEXT_MODEL, quantization_config=_bnb_config).eval()
 
+# Timer measures forward pass only — consistent with FP16 arm above
 t0 = time.perf_counter()
-embeddings_int4 = embed(backbone_int4, PROMPTS)
+embeddings_int4 = embed(backbone_int4, PROMPTS, tokenizer)
 torch.cuda.synchronize()
 t_embed_int4 = time.perf_counter() - t0
-print(f"  [embed INT4]  {t_embed_int4:.3f}s")
+print(f"  [embed INT4 forward]  {t_embed_int4:.3f}s  (forward pass only, backbone pre-loaded)")
 
 del backbone_int4
 torch.cuda.empty_cache()
@@ -234,8 +241,9 @@ print("        It does NOT measure accuracy vs ground truth — both arms could 
 print("        from GT in the same direction and still agree perfectly.")
 print("        This is n=1 (one MNI brain, one prompt); interpret accordingly.")
 print()
-print(f"  Embed time: FP16 {t_embed_fp16:.3f}s  →  INT4 {t_embed_int4:.3f}s  ({t_embed_fp16/t_embed_int4:.1f}× faster)")
-print("  (Embed ratio measured here, not in fair_benchmark — both arms INT4 there.)")
+print(f"  Embed forward pass: FP16 {t_embed_fp16:.3f}s  →  INT4 {t_embed_int4:.3f}s  ({t_embed_fp16/t_embed_int4:.1f}× faster)")
+print("  Timer covers forward pass only (backbone and tokenizer pre-loaded).")
+print("  This is the INT4 speed figure absent from fair_benchmark (both arms INT4 there).")
 print("=" * 70)
 
 # Save results
@@ -260,7 +268,7 @@ lines = [
     "",
     f"Embed FP16: {t_embed_fp16:.3f}s",
     f"Embed INT4: {t_embed_int4:.3f}s",
-    f"Embed speedup (this script): {t_embed_fp16/t_embed_int4:.1f}x",
+    f"Embed forward-pass speedup (FP16->INT4, backbone pre-loaded): {t_embed_fp16/t_embed_int4:.1f}x",
 ]
 Path(out).write_text("\n".join(lines))
 print(f"\nSaved: {out}")
