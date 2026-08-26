@@ -65,18 +65,19 @@ session._predict()
 
 Per-job paired speedup — cite the mean and the range, never a single job:
 
-| Job | Baseline _predict | Compiled _predict | Speedup | DSC Δ |
-|-----|------------------|-------------------|---------|-------|
-| 56908464 (exploratory) | 0.2882s | 0.2146s | 1.34× | +0.0002 |
-| 56923894 (repeat 1) | 0.2881s | 0.2068s | 1.39× | +0.0000 |
-| 56923895 (repeat 2) | 0.2722s | 0.2128s | 1.28× | +0.0004 |
-| 56923896 (repeat 3) | 0.2947s | 0.2236s | 1.32× | +0.0002 |
-| **Mean (repeats)** | | | **1.33×** | **≤ +0.0004** |
+| Job | Baseline _predict | Compiled _predict | Gain/obj | Speedup | DSC Δ |
+|-----|------------------|-------------------|----------|---------|-------|
+| 56908464 | 0.2882s | 0.2146s | 0.0736s | 1.34× | +0.0002 |
+| 56923894 | 0.2881s | 0.2068s | 0.0813s | 1.39× | +0.0000 |
+| 56923895 | 0.2722s | 0.2128s | 0.0594s | 1.28× | +0.0004 |
+| 56923896 | 0.2947s | 0.2236s | 0.0711s | 1.32× | +0.0002 |
+| **Mean (n=4)** | | | **0.0714s** | **1.33×** | **≤ +0.0004** |
 
-- Speedup to cite: **1.33× mean, range 1.28–1.39×** (n=3 repeats; 56908464 was exploratory)
+- Speedup to cite: **1.33× mean, range 1.28–1.39× (n=4)** — all four are valid paired
+  within-job ratios; cite the mean and range, never a single job
 - DSC: 0.7914 → 0.7916 in job 56908464; all four runs bracket zero (Δ ≤ +0.0004)
 - Triton cold-start: **23.61s** (fully isolated, /tmp-backed, job 56914757; /scratch NFS will be higher — lower bound)
-- Break-even: **~334 objects (~23 cases)** — 23.61s ÷ 0.0706s/object mean gain (n=3)
+- Break-even: **~331 objects (~22 cases)** — 23.61s ÷ 0.0714s/object mean gain (n=4), 14.7 obj/case
 - autozoom adds zero measurable overhead on this validation set (no zoom-out passes triggered)
 
 **Caveat to state when reporting DSC**: at `N_CASES = 20` (294 objects) a delta of

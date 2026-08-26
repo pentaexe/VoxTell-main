@@ -76,13 +76,16 @@ rather than drawn from the challenge. A full 881-case run would tighten this.
 | Triton cold-start (run 1) | **23.61s** |
 | Residual (run 2) | 0.513s |
 | Fully warm mean (runs 3–6, single object) | 0.125s |
-| Mean warm gain per object (n=4 jobs) | **0.0706s** |
-| Break-even | **~334 objects (~23 cases)** |
+| Mean warm gain per object (n=4 jobs) | **0.0714s** |
+| Break-even | **~331 objects (~22 cases)** |
 | First case cold vs warm baseline | **~25.4s  vs  ~4.38s** |
 
-**Break-even derivation**: 23.61s ÷ 0.0706s/object = 334 objects; 334 ÷ 14.7 obj/case = 23 cases.
+**Break-even derivation**: 23.61s ÷ 0.0714s/object = 331 objects; 331 ÷ 14.7 obj/case = 22 cases.
 
-Mean gain 0.0706s/object = mean of 3 repeat jobs (56923894–896): (0.0813 + 0.0594 + 0.0711) / 3.
+Mean gain 0.0714s/object = mean of all 4 jobs: (0.0736 + 0.0813 + 0.0594 + 0.0711) / 4.
+All four are valid paired within-job ratios measured under the same config, so all four
+are included. (An earlier revision averaged only the three serialized repeats, giving
+0.0706s and ~334 objects; the difference is immaterial but n=4 is now used throughout.)
 
 Note: `/tmp` is node-local fast storage. Production Triton cache on `/scratch` (NFS) will take longer to load the first time. 23.61s is therefore a lower bound for a from-scratch production deployment. After break-even, all subsequent cases run at 1.33×.
 
@@ -133,7 +136,7 @@ Autozoom is also not the explanation for the 0.108s (June) vs 0.288s (current) g
 
 ---
 
-## Summary of Final Results — CONFIRMED (n=3)
+## Summary of Final Results — CONFIRMED (n=4)
 
 **Config**: fold='all', do_autozoom=True, torch_n_threads=os.cpu_count(), H100 MIG 3g.40gb, Fir cluster
 
@@ -145,12 +148,14 @@ Autozoom is also not the explanation for the 0.108s (June) vs 0.288s (current) g
 | 56923894 (repeat 1) | 0.2881s | 0.2068s | **1.39×** | +0.0000 |
 | 56923895 (repeat 2) | 0.2722s | 0.2128s | **1.28×** | +0.0004 |
 | 56923896 (repeat 3) | 0.2947s | 0.2236s | **1.32×** | +0.0002 |
-| **Mean (repeats only)** | | | **1.33×** | **≤ +0.0004** |
+| **Mean (n=4)** | | | **1.33×** | **≤ +0.0004** |
 
-Mean includes only the 3 repeat jobs (56923894–896), not the original exploratory run.
+Mean over all four jobs. Each is a paired within-job ratio measured under the same
+config (fold='all', autozoom=ON, `torch_n_threads=os.cpu_count()`), so all four count.
+**Cite as 1.33× mean, range 1.28–1.39× (n=4)** — never a single job's figure.
 
 **Cold Triton cache**: 23.61s (/tmp-backed, fully isolated, job 56914757; production /scratch NFS will be higher — lower bound).  
-**Break-even**: ~334 objects (~23 cases) using mean gain of 0.0706s/object (n=3 repeats).  
+**Break-even**: ~331 objects (~22 cases) using mean gain of 0.0714s/object (n=4).  
 After break-even, all subsequent objects run at 1.33×.
 
 **fold='all' verified**: `ls /scratch/brianx7/nnInteractive_weights/nnInteractive_v1.0/` shows `fold_all` directory exists.
