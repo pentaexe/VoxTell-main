@@ -78,7 +78,25 @@ cluster), but it means local results before and after that install are not compa
 Cite **1.33× mean, range 1.28–1.39× (n=4)**. Never 1.34× alone (that is job
 56908464 only). Break-even ~331 objects / ~22 cases at 0.0714s/object mean gain.
 
-## 6. Two different DSC measures — do not present them as one
+## 6. The VoxTell benchmark image may be unrepresentative of the challenge data
+
+Every VoxTell timing number comes from ONE MNI T1 brain volume
+(`mni_icbm152_t1_tal_nlin_sym_09a.nii.gz`, shape 189×233×197) with the single
+prompt "brain". The CVPR challenge validation data — and all the nnInteractive
+numbers — are abdominal CT.
+
+The RTX rerun showed why this matters: at 189×233×197 against a 192³ patch, the
+sliding-window grid is 4 patches at **both** tile_step 0.5 and 0.75, so tile_step
+has essentially nothing to act on. The March claim of `343 → 125 patches, 3.6×`
+came from a larger image. Neither figure has been tested on the other's volume.
+
+**Do not state** "tile_step gives no benefit" — that overreaches from one small
+volume. **Do state** which volume each number was measured on. If time allows
+before the interview, run `fair_benchmark.py` against one CT volume from
+`/scratch/brianx7/cvpr_val/3D_val_npz` so the VoxTell and nnInteractive numbers
+describe the same kind of data.
+
+## 7. Two different DSC measures — do not present them as one
 
 - nnInteractive: **true DSC vs ground truth** at
   `/scratch/brianx7/cvpr_val/3D_val_gt/3D_val_gt_interactive`, 294 objects.

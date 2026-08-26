@@ -219,12 +219,33 @@ from voxtell.inference.predictor import VoxTellPredictor, _prompt_cache_path
 
 predictor = VoxTellPredictor(model_dir=MODEL_DIR, device=DEVICE)
 
+# _load_text_backbone (predictor.py:89) silently falls back to FP16 on ANY exception
+# — a missing `accelerate` is the common one. That fallback would make this an
+# FP16-vs-INT4 comparison again while the log still claims "precision matched".
+# Fail loudly instead of measuring the wrong thing.
+if not getattr(predictor, "_backbone_quantized", False):
+    raise RuntimeError(
+        "v3 text backbone did NOT load as INT4 — it fell back to FP16.\n"
+        "v0_gpu loaded INT4 explicitly, so this run would be an uncontrolled\n"
+        "precision comparison mislabelled as precision-matched.\n"
+        "Most likely cause: `accelerate>=0.26.0` is not installed in this env.\n"
+        "Fix the env and rerun; do not report numbers from this configuration."
+    )
+print("  [check] v3 backbone confirmed INT4 (NF4) — precision matched with v0_gpu.")
+
 # Phase 1: Numba preprocessing
+# Warm the JIT first — Numba compiles on first call, and that compile landing inside
+# the timer made preprocessing read SLOWER than numpy on the RTX run. Both timings
+# are reported so the compile cost stays visible rather than being hidden.
+t0 = time.perf_counter()
+_ = predictor.preprocess(raw_img)
+t_pre_v3_jit = time.perf_counter() - t0
+
 t0 = time.perf_counter()
 data_v3, bbox, orig_shape = predictor.preprocess(raw_img)
 torch.cuda.synchronize()
 t_pre_v3 = time.perf_counter() - t0
-print(f"  [pre]   {t_pre_v3:.3f}s")
+print(f"  [pre]   {t_pre_v3:.3f}s  (first call incl. Numba JIT: {t_pre_v3_jit:.3f}s)")
 
 # Phase 2: INT4 embedding — COLD measurement (disk + memory cache cleared)
 # Separates INT4 gain from cache gain (cache is attributed separately at 18.7×).
@@ -308,10 +329,14 @@ print(f"  {'TOTAL':<28} {total_v0:>13.2f}s {total_v3_warm:>11.2f}s")
 print(f"  Speedup (warm cache):     {speedup_warm:.1f}×")
 print()
 print(f"  Cache gain on embedding (cold → warm INT4): {cache_gain_str}")
-print(f"  Patches: v0_gpu {n_patches_v0} vs v3 {len(slicers_v3)}"
-      + ("  ← identical: tile_step gave NO patch reduction on this image;"
-         "\n           sliding-window gain is from crop-to-nonzero, not tile_step."
-         if n_patches_v0 == len(slicers_v3) else ""))
+print(f"  Patches: v0_gpu {n_patches_v0} vs v3 {len(slicers_v3)}")
+if n_patches_v0 == len(slicers_v3):
+    print(f"    Identical patch count. This volume is {tuple(raw_img.shape[1:])} against a")
+    print(f"    {patch_size} patch, so the sliding-window grid is tiny at BOTH tile_step")
+    print( "    settings and the parameter has almost nothing to act on here.")
+    print( "    => On THIS volume the sliding-window gain is crop-to-nonzero, not tile_step.")
+    print( "    This does NOT show tile_step is ineffective generally — the 343→125 patch")
+    print( "    figure came from a different, larger image and is untested on this one.")
 print(f"  Sliding window alone: {t_slide_v0:.3f}s → {t_slide_v3:.3f}s = {t_slide_v0/t_slide_v3:.2f}×")
 if t_pre_v3 > t_pre_v0:
     print(f"  NOTE: Numba preprocessing is SLOWER here ({t_pre_v0:.3f}s → {t_pre_v3:.3f}s)."
