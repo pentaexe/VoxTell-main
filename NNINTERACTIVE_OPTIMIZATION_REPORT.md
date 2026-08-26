@@ -55,7 +55,11 @@ session.network = torch.compile(session.network, mode='reduce-overhead')
 | **torch.compile** | **0.7916** | 294 |
 | Difference | **+0.0002** | — |
 
-**Verdict: accuracy maintained** (< 0.005 DSC change).
+**On the DSC delta**: +0.0002 over 294 objects (20 cases) is within sampling noise at
+this object count — it is not on its own evidence of equivalence. The defensible claim
+is that four independent runs bracket zero (Δ from +0.0000 to +0.0004, no run showing
+degradation). No pass/fail threshold is applied; a 0.005 bar would be self-assigned
+rather than drawn from the challenge. A full 881-case run would tighten this.
 
 **Note on earlier 1.58× figure**: The June benchmark (job 46108850) used `torch_n_threads=8` (SLURM_CPUS_PER_TASK), autozoom=OFF, and fold=0, giving 0.108s baseline (1.58× speedup). The controlled autozoom experiment (job 56914754) shows autozoom=ON is actually 13% *faster* than autozoom=OFF on this dataset, ruling out autozoom as the cause of the higher baseline. The most likely explanation is thread oversubscription: `torch_n_threads=os.cpu_count()` (which may return 64+ on the compute node) creates more threads than the 8 allocated cores can serve, increasing dispatch overhead. The 1.34× figure, measured with `os.cpu_count()` and fold='all', is the correct production speedup.
 

@@ -154,7 +154,6 @@ print(f"{'='*60}")
 print(f"  Baseline      (fold=0): {dsc_base:.4f}  ({n_base} objects)")
 print(f"  torch.compile (fold=0): {dsc_comp:.4f}  ({n_comp} objects)")
 print(f"  Difference:             {dsc_comp - dsc_base:+.4f}")
-if abs(dsc_comp - dsc_base) < 0.005:
-    print("  Verdict: accuracy maintained (< 0.005 DSC change)")
-else:
-    print("  Verdict: accuracy change exceeds 0.005 — review results")
+print(f"  Objects scored: {n_base} (baseline) / {n_comp} (compiled).")
+print("  Note: no pass/fail threshold applied. NOTE: this script uses fold=0 —")
+print("        do not cite these DSC numbers; use nni_dsc_foldall.py instead.")
