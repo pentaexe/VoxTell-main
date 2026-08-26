@@ -10,8 +10,10 @@ Design:
     consulted and cannot leak FP16 embeddings into the INT4 arm
   - Network weights are identical (same checkpoint); only the text backbone differs
   - Agreement DSC: DSC(prediction_fp16, prediction_int4)
-    A score near 1.0 means quantization introduces no segmentation change.
-    A score below 0.95 warrants reporting.
+    This measures whether quantization changes the output. It does NOT measure
+    accuracy against ground truth — both arms could drift from GT in the same
+    direction and still agree. n=1 (one MNI volume, one prompt).
+    No pass/fail threshold is applied; the number is reported as measured.
 """
 
 import time
