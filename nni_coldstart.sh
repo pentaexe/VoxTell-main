@@ -2,9 +2,9 @@
 #SBATCH --job-name=nni_coldstart
 #SBATCH --output=/scratch/brianx7/logs/nni_coldstart_%j.out
 #SBATCH --gpus=nvidia_h100_80gb_hbm3_3g.40gb:1
-#SBATCH --mem=64G
+#SBATCH --mem=16G
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=4
 #SBATCH --time=0:30:00
 #SBATCH --account=rrg-jma
 
