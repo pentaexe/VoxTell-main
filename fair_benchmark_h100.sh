@@ -8,12 +8,11 @@
 #SBATCH --time=0:15:00
 #SBATCH --account=rrg-jma
 
-# Use voxtell env — nninteractive env does not have transformers
-# Check: ls /scratch/brianx7/envs/ to verify env name, then update this line
-source /scratch/brianx7/envs/voxtell/bin/activate
+source /scratch/brianx7/envs/nninteractive/bin/activate
 
 export TORCH_HOME=/scratch/brianx7/torch_home
 export XDG_CACHE_HOME=/scratch/brianx7/cache
+export HF_HOME=/scratch/brianx7/hf_cache
 
 cd /scratch/brianx7/VoxTell-main
 
