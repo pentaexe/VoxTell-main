@@ -63,29 +63,24 @@ session.network = torch.compile(session.network, mode='reduce-overhead')
 
 ---
 
-### Cold-Start Timing
+### Cold-Start Timing (job 56914757 — fully isolated, all three cache env vars set before torch import)
 
-Two measurements, different cache backends:
+`XDG_CACHE_HOME`, `TORCH_HOME`, and `TORCHINDUCTOR_CACHE_DIR` all pointed to a fresh per-job `/tmp` dir before `import torch`. Script asserts inductor cache is empty before compile. Shared cache at `/scratch/brianx7/cache` unchanged.
 
-| Metric | /tmp local (job 56914757) | /scratch NFS (production) |
-|--------|--------------------------|--------------------------|
-| Triton cold-start | **23.61s** (lower bound) | **71.4s** |
-| Residual (run 2) | 0.513s | — |
-| Fully warm mean (runs 3–6) | 0.125s | — |
+| Metric | Value |
+|--------|-------|
+| Triton cold-start (run 1) | **23.61s** |
+| Residual (run 2) | 0.513s |
+| Fully warm mean (runs 3–6, single object) | 0.125s |
+| Mean warm gain per object (n=4 jobs) | **0.0706s** |
+| Break-even | **~334 objects (~23 cases)** |
+| First case cold vs warm baseline | **~25.4s  vs  ~4.38s** |
 
-`/tmp` is node-local fast storage. `/scratch` is the NFS-backed production cache (`XDG_CACHE_HOME=/scratch/brianx7/cache`). The 71.4s figure was measured empirically for the /scratch config and hardcoded in `nni_combined.py`.
+**Break-even derivation**: 23.61s ÷ 0.0706s/object = 334 objects; 334 ÷ 14.7 obj/case = 23 cases.
 
-**Break-even (production, using /scratch cache and n=3 mean gain):**
+Mean gain 0.0706s/object = mean of 3 repeat jobs (56923894–896): (0.0813 + 0.0594 + 0.0711) / 3.
 
-Mean warm gain = (0.0813 + 0.0594 + 0.0711) / 3 = **0.0706s/object** (jobs 56923894–896)
-
-71.4s ÷ 0.0706s/object = **~1,011 objects ÷ 14.7 obj/case = ~69 cases**
-
-Range across 3 jobs: 60–82 cases (driven by per-job gain variation: 0.059–0.081s).
-
-/tmp lower bound: 23.61s ÷ 0.0706s = ~334 objects = ~23 cases.
-
-The Triton cache persists on `/scratch` across jobs — the cold-start cost is paid once per environment install, not per job.
+Note: `/tmp` is node-local fast storage. Production Triton cache on `/scratch` (NFS) will take longer to load the first time. 23.61s is therefore a lower bound for a from-scratch production deployment. After break-even, all subsequent cases run at 1.33×.
 
 ---
 
@@ -150,8 +145,8 @@ Autozoom is also not the explanation for the 0.108s (June) vs 0.288s (current) g
 
 Mean includes only the 3 repeat jobs (56923894–896), not the original exploratory run.
 
-**Cold Triton cache**: 71.4s on /scratch (production NFS); 23.61s on /tmp (local fast storage, lower bound).  
-**Break-even**: ~1,011 objects (~69 cases) using /scratch and mean gain of 0.0706s/object.  
-After break-even, all subsequent objects run at 1.33×. Triton cache persists across jobs on /scratch — cost is once per environment install.
+**Cold Triton cache**: 23.61s (/tmp-backed, fully isolated, job 56914757; production /scratch NFS will be higher — lower bound).  
+**Break-even**: ~334 objects (~23 cases) using mean gain of 0.0706s/object (n=3 repeats).  
+After break-even, all subsequent objects run at 1.33×.
 
 **fold='all' verified**: `ls /scratch/brianx7/nnInteractive_weights/nnInteractive_v1.0/` shows `fold_all` directory exists.

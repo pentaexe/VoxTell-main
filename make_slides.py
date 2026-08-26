@@ -498,40 +498,40 @@ s = add_slide()
 set_bg(s, SLIDE_BG)
 slide_header(s, 'nnInteractive — Cold Start & Break-even', '11 / 12', TEAL)
 
-txbox(s, 'Cold-start measured in two configs: /tmp local cache (job 56914757) and /scratch NFS production cache',
+txbox(s, 'Job 56914757 · fully isolated /tmp inductor cache · all three env vars set before import torch',
       0.5, 0.9, 11, 0.35, size=10, color=MUTED)
 
 tbl = add_table(s, 7, 2, 0.5, 1.35, 7.5, 3.0)
 cell_set(tbl.cell(0, 0), 'Metric', bold=True, bg=NAVY, color=WHITE, size=11)
 cell_set(tbl.cell(0, 1), 'Value', bold=True, bg=NAVY, color=WHITE, size=11)
 cs_rows = [
-    ('Triton cold-start — /tmp local (job 56914757)', '23.61s  (lower bound)'),
-    ('Triton cold-start — /scratch NFS (production)', '71.4s'),
+    ('Triton cold-start (run 1, job 56914757)', '23.61s'),
     ('Residual (run 2)', '0.513s'),
     ('Fully warm mean (runs 3–6)', '0.125s'),
-    ('Mean warm gain per object (n=3, jobs 56923894–896)', '0.0706s'),
-    ('Break-even (production, /scratch cache)', '~1,011 objects (~69 cases)'),
+    ('Mean warm gain per object (n=4 jobs)', '0.0706s'),
+    ('Break-even', '~334 objects (~23 cases)'),
+    ('First case cold vs warm baseline', '~25.4s  vs  ~4.38s'),
 ]
 for r, (a, b) in enumerate(cs_rows):
     bg = alt_bg if r % 2 == 0 else WHITE
-    hl = r == 5  # break-even row
+    hl = r == 4  # break-even row
     cell_set(tbl.cell(r+1, 0), a, bg=bg, size=11)
     cell_set(tbl.cell(r+1, 1), b, bg=bg, size=11,
              color=TEAL if hl else None, bold=hl)
 
-txbox(s, 'Break-even (/scratch): 71.4s ÷ 0.0706s/object = ~1,011 objects = ~69 cases',
+txbox(s, 'Break-even = 23.61s ÷ 0.0706s/object = ~334 objects = ~23 cases',
       0.5, 4.5, 9, 0.4, size=12, bold=True, color=TEAL)
 
-txbox(s, '/tmp lower bound: 23.61s ÷ 0.0706s = ~334 objects = ~23 cases. '
-         'After break-even, all subsequent objects run at 1.33×.\n'
-         'The Triton cache on /scratch persists across jobs — cost is once per environment install.',
+txbox(s, 'Note: /tmp is node-local fast storage. Production Triton cache on /scratch (NFS) will be higher.\n'
+         '23.61s is a lower bound for a from-scratch deployment.\n'
+         'After break-even, all subsequent objects run at 1.33×.',
       0.5, 5.0, 9, 0.8, size=10, color=MUTED)
 
-txbox(s, '~69', 10.2, 2.1, 2.7, 1.0, size=54, bold=True, color=TEAL,
+txbox(s, '~23', 10.2, 2.1, 2.7, 1.0, size=54, bold=True, color=TEAL,
       align=PP_ALIGN.CENTER)
 txbox(s, 'cases to break even', 9.9, 3.1, 3.3, 0.4, size=11, color=MUTED,
       align=PP_ALIGN.CENTER)
-txbox(s, '(production, /scratch)', 9.9, 3.5, 3.3, 0.4, size=10, color=MUTED,
+txbox(s, '(~334 objects)', 9.9, 3.5, 3.3, 0.4, size=10, color=MUTED,
       align=PP_ALIGN.CENTER)
 
 

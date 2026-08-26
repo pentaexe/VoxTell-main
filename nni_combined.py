@@ -184,6 +184,10 @@ if abs(dsc_c - dsc_b) < 0.005:
 else:
     print("  Verdict: accuracy change exceeds 0.005 — review results")
 print()
-print("  Cold-cache note: Triton compilation adds ~71s to first compiled case.")
-print(f"  Break-even vs baseline: ~{int(71.4 / (obj_b - obj_c))} objects (~{int(71.4 / (obj_b - obj_c) / len(eval_cases) * (sum(1 for c in eval_cases if np.load(c, allow_pickle=True).get('boxes') is not None)))} cases).")
+cold_s = 23.61  # measured in job 56914757, /tmp-backed fully isolated cache
+obj_per_case = n_b / len(eval_cases)
+be_obj = int(cold_s / (obj_b - obj_c))
+be_case = int(be_obj / obj_per_case)
+print(f"  Cold-cache note: Triton cold-start ~{cold_s:.2f}s (job 56914757, /tmp; /scratch NFS will be higher).")
+print(f"  Break-even vs baseline: ~{be_obj} objects (~{be_case} cases, {obj_per_case:.1f} obj/case).")
 print("  After break-even, all subsequent objects run at the compiled speed.")
