@@ -5,7 +5,7 @@
 #SBATCH --mem=64G
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
-#SBATCH --time=0:30:00
+#SBATCH --time=1:00:00
 #SBATCH --account=rrg-jma
 
 # Runs the fair benchmark against a CVPR validation CT volume instead of the MNI

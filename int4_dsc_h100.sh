@@ -5,7 +5,7 @@
 #SBATCH --mem=32G
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
-#SBATCH --time=0:30:00
+#SBATCH --time=1:00:00
 #SBATCH --account=rrg-jma
 
 source /home/brianx7/envs/voxtell/bin/activate
