@@ -44,12 +44,41 @@ Report both numbers that job prints:
 Label A as algorithmic. Do not call it "fair GPU-vs-GPU" without saying what is
 held constant.
 
-## 4. nnInteractive speedup — n=4, not a single job
+## 4. RTX "1.3× algorithmic gain" — measured with the defective methodology
+
+`make_slides.py:260` and `make_slides.py:564` cite
+`v0_gpu 3.10s → v3 2.38s = 1.3× algorithmic gain` from `fair_benchmark_results.txt`.
+
+That file is dated **2026-04-10** and was produced by the pre-fix
+`fair_benchmark.py`. Two of the three defects that invalidated the H100 run apply:
+
+- **No GPU warmup** — v0_gpu absorbed CUDA context init. Applies.
+- **v3 embed was likely a cache hit** — the old script never cleared the cache. Applies.
+- **FP16-vs-INT4 precision asymmetry** — probably does *NOT* apply here. The local
+  `voxtell` env has no `accelerate`, so `_load_text_backbone` (predictor.py:89) hits
+  an ImportError and silently falls back to FP16. The April v3 arm was therefore
+  most likely FP16, matching v0_gpu by accident. **Unconfirmed** — no April log was
+  kept; if one surfaces, look for `[Text backbone] INT4 unavailable (ImportError)`.
+
+So the RTX number is less wrong than the H100 one was, but "1.3× algorithmic gain"
+still rests on an unwarmed baseline and a cached v3 embed.
+
+**Fix**: rerun locally with the corrected script. The local `voxtell` conda env has
+CUDA on the RTX 4070 SUPER, bitsandbytes 0.49.2, and Qwen3-4B cached — but needs
+`accelerate>=0.26.0` installed before INT4 will load. Then cite RTX and H100 from the
+same script version. If the rerun is not used, the slide must say the RTX figure came
+from an earlier methodology and is not comparable to the H100 number beside it.
+
+Note that installing `accelerate` changes local behaviour: v3 will genuinely run INT4
+where it previously fell back to FP16. That is the intended state (it matches the
+cluster), but it means local results before and after that install are not comparable.
+
+## 5. nnInteractive speedup — n=4, not a single job
 
 Cite **1.33× mean, range 1.28–1.39× (n=4)**. Never 1.34× alone (that is job
 56908464 only). Break-even ~331 objects / ~22 cases at 0.0714s/object mean gain.
 
-## 5. Two different DSC measures — do not present them as one
+## 6. Two different DSC measures — do not present them as one
 
 - nnInteractive: **true DSC vs ground truth** at
   `/scratch/brianx7/cvpr_val/3D_val_gt/3D_val_gt_interactive`, 294 objects.
