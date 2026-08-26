@@ -50,6 +50,19 @@ print(f"GPU : {torch.cuda.get_device_name(0)}")
 print(f"Image: {IMAGE_PATH}")
 print(f"Prompts: {PROMPTS}\n")
 
+# Results filename — computed up front so a stale file from a previous run is
+# removed now. Otherwise a crashed run leaves the old numbers on disk looking fresh.
+gpu_name = torch.cuda.get_device_name(0)
+if "H100" in gpu_name:
+    out_file = "fair_benchmark_h100_results.txt"
+elif "RTX" in gpu_name or "GeForce" in gpu_name:
+    out_file = "fair_benchmark_results.txt"
+else:
+    out_file = f"fair_benchmark_{gpu_name.replace(' ', '_')}_results.txt"
+if Path(out_file).exists():
+    Path(out_file).unlink()
+    print(f"Removed stale {out_file} from a previous run.\n")
+
 # ── Load image (shared between both runs) ─────────────────────────────────────
 print("Loading image...")
 raw_img, _ = NibabelIOWithReorient().read_images([IMAGE_PATH])
@@ -112,10 +125,13 @@ def run_sliding_window(net, data, embeddings, tile_step):
 
 # ── GPU warmup — initialize CUDA context before any timed measurement ─────────
 # Without this, the first arm absorbs CUDA context init + cuDNN autotuning.
-print("Warming up GPU (dummy forward pass to initialize CUDA context)...")
-_dummy = torch.zeros((1, 1, 4, 4, 4), dtype=torch.float16, device=DEVICE)
+# Warm at the real patch size: a tiny dummy downsamples to 1x1x1 and InstanceNorm3d
+# raises (it uses instance stats even under .eval(), so it needs >1 spatial element).
+# Warming at patch_size also initializes the exact cuDNN algos the real run uses.
+print(f"Warming up GPU (forward pass at patch_size={patch_size})...")
 _net_warmup = load_network()
 with torch.inference_mode(), torch.autocast("cuda", enabled=True):
+    _dummy = torch.zeros((1, 1, *patch_size), dtype=torch.float16, device=DEVICE)
     _dummy_emb = torch.zeros((1, 1, 2560), dtype=torch.float16, device=DEVICE)
     _ = _net_warmup(_dummy, _dummy_emb)
 torch.cuda.synchronize()
@@ -289,15 +305,7 @@ print("  Both arms: INT4 (NF4) via bitsandbytes. DSC impact of INT4 not measured
 print(f"  Original reported speedup: 26.0×  (CPU baseline — unfair comparison)")
 print("=" * 70)
 
-# Save — use a GPU-specific filename so H100 and RTX runs don't overwrite each other
-gpu_name = torch.cuda.get_device_name(0)
-if "H100" in gpu_name:
-    out_file = "fair_benchmark_h100_results.txt"
-elif "RTX" in gpu_name or "GeForce" in gpu_name:
-    out_file = "fair_benchmark_results.txt"
-else:
-    out_file = f"fair_benchmark_{gpu_name.replace(' ', '_')}_results.txt"
-
+# Save — out_file was computed at startup and any stale copy already removed
 lines = [
     "Fair GPU-vs-GPU Benchmark Results",
     "=" * 40,

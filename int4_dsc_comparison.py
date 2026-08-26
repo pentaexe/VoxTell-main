@@ -55,6 +55,15 @@ print(f"Image: {IMAGE_PATH}")
 print(f"Prompts: {PROMPTS}")
 print(f"tile_step: {TILE_STEP}  (v3 setting, same for both arms)\n")
 
+# Results filename computed up front; stale copy removed now so a crashed run
+# cannot leave old numbers on disk looking like a fresh result.
+gpu_name = torch.cuda.get_device_name(0)
+tag = "h100" if "H100" in gpu_name else gpu_name.replace(" ", "_")
+out = f"int4_dsc_results_{tag}.txt"
+if Path(out).exists():
+    Path(out).unlink()
+    print(f"Removed stale {out} from a previous run.\n")
+
 # ── Load image (shared) ───────────────────────────────────────────────────────
 print("Loading and preprocessing image...")
 raw_img, _ = NibabelIOWithReorient().read_images([IMAGE_PATH])
@@ -127,10 +136,12 @@ def embed(backbone, prompts, tokenizer):
     return emb.view(1, len(prompts), -1)
 
 # ── GPU warmup ────────────────────────────────────────────────────────────────
-print("Warming up GPU...")
+# Warm at the real patch size: a tiny dummy downsamples to 1x1x1 and InstanceNorm3d
+# raises (it uses instance stats even under .eval(), so it needs >1 spatial element).
+print(f"Warming up GPU (forward pass at patch_size={patch_size})...")
 _net_warm = load_network()
-_dummy = torch.zeros((1, 1, 4, 4, 4), dtype=torch.float16, device=DEVICE)
 with torch.inference_mode(), torch.autocast("cuda", enabled=True):
+    _dummy = torch.zeros((1, 1, *patch_size), dtype=torch.float16, device=DEVICE)
     _ = _net_warm(_dummy, torch.zeros((1, 1, 2560), dtype=torch.float16, device=DEVICE))
 torch.cuda.synchronize()
 del _net_warm, _dummy
@@ -248,10 +259,7 @@ print("  Timer covers forward pass only (backbone and tokenizer pre-loaded).")
 print("  This is the INT4 speed figure absent from fair_benchmark (both arms INT4 there).")
 print("=" * 70)
 
-# Save results
-gpu_name = torch.cuda.get_device_name(0)
-tag = "h100" if "H100" in gpu_name else gpu_name.replace(" ", "_")
-out = f"int4_dsc_results_{tag}.txt"
+# Save results — out was computed at startup and any stale copy already removed
 lines = [
     "INT4 vs FP16 Output Agreement — VoxTell",
     "=" * 40,
