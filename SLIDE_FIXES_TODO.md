@@ -78,7 +78,28 @@ cluster), but it means local results before and after that install are not compa
 Cite **1.33× mean, range 1.28–1.39× (n=4)**. Never 1.34× alone (that is job
 56908464 only). Break-even ~331 objects / ~22 cases at 0.0714s/object mean gain.
 
-## 6. The VoxTell benchmark image may be unrepresentative of the challenge data
+## 6. "1.4× Numba preprocessing" is a REGRESSION on this volume, not a gain
+
+`make_slides.py:245` lists `Numba preprocessing | @njit(parallel=True) crop +
+z-score normalize | 1.4× preprocessing | Unchanged`.
+
+Measured on the RTX with the JIT warmed separately:
+
+| | time |
+|---|---|
+| numpy (v0_gpu) | 0.075s |
+| Numba, first call incl. JIT | 0.121s |
+| Numba, warmed | 0.105s |
+
+Numba is ~1.4× **slower**, and only ~16ms of that is JIT compilation — so warming
+the JIT does not rescue it. On a 189×233×197 volume the arrays are small enough
+that Numba's dispatch overhead exceeds what parallelism buys.
+
+The March 1.4× gain was presumably measured on a larger volume. Either re-measure
+on the volume you present, or state the volume size the gain applies to. Do not
+show it as an unqualified speedup.
+
+## 7. The VoxTell benchmark image may be unrepresentative of the challenge data
 
 Every VoxTell timing number comes from ONE MNI T1 brain volume
 (`mni_icbm152_t1_tal_nlin_sym_09a.nii.gz`, shape 189×233×197) with the single
@@ -96,7 +117,7 @@ before the interview, run `fair_benchmark.py` against one CT volume from
 `/scratch/brianx7/cvpr_val/3D_val_npz` so the VoxTell and nnInteractive numbers
 describe the same kind of data.
 
-## 7. Two different DSC measures — do not present them as one
+## 8. Two different DSC measures — do not present them as one
 
 - nnInteractive: **true DSC vs ground truth** at
   `/scratch/brianx7/cvpr_val/3D_val_gt/3D_val_gt_interactive`, 294 objects.
