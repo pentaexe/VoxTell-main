@@ -8,6 +8,11 @@ Job 56964411, `CT_AMOS_amos_0018.npz`, 63×512×512, prompt read from the file
 text backbone and sliding-window path all pre-warmed, embed cache verified empty
 before the cold measurement. Patches 25 → 9. Sliding window 3.083s → 1.059s = 2.91×.
 
+⚠️ **This is n=1 and it is the headline.** The brain benchmark was run nine times
+*because two runs disagreed by 33%*. The same standard has to apply here before it
+goes in front of Dr. Ma. Submit 2–3 serialized repeats of `fair_benchmark_h100_ct.sh`
+and cite mean with range. Until then this number has had exactly one run on one case.
+
 **The headline speedup fell four times as methodology tightened:**
 
 | Reported | Why it was wrong |
@@ -23,15 +28,24 @@ is a 189×233×197 volume against a 192³ patch, where tile_step has 4 patches a
 setting and the GPU is fast enough that v3's extra bookkeeping dominates. It is,
 however, proof that the brain volume cannot support any speedup claim.
 
-**INT4 vs FP16 output agreement: DSC 0.9716**, INT4 segmenting 5.52% fewer voxels
-(1,828,296 vs 1,935,162), n=1. INT4 text encoding is 1.5× faster than FP16 on the
-forward pass (0.088s → 0.058s, backbone pre-loaded). The ~2.8% disagreement and the
-systematic under-segmentation are real and must be stated, not rounded to "identical".
+**INT4 vs FP16: DSC 0.9716 agreement, INT4 segments 5.52% fewer voxels**
+(1,828,296 vs 1,935,162). INT4 text encoding is 1.5× faster on the forward pass
+(0.088s → 0.058s, backbone pre-loaded).
 
-**RTX 4070 SUPER, brain, n=5 verified cold: 1.7× (range 1.6–1.8×).** Note the RTX
-shows a gain where the H100 shows none — the H100 is fast enough that fixed overhead
-dominates on a small volume. Worth one line: the optimizations matter more on
-weaker hardware.
+Exact slide wording: *"On one CT case, INT4 agrees with FP16 at DSC 0.97 and
+systematically under-segments by 5.5%. Not measured across the validation set."*
+
+Do not soften the direction. A one-sided 5.5% voxel deficit is a bias signature,
+not noise — noise would scatter both ways. The n=1 caveat limits how far it
+generalizes; it does not make the direction uncertain.
+
+**RTX 4070 SUPER, brain, n=5 verified cold: 1.7× (range 1.6–1.8×)** vs H100 brain
+at 1.0×.
+
+⚠️ The obvious explanation — "the H100 is fast enough that fixed overhead dominates
+on a small volume" — is a HYPOTHESIS. Nothing measured it. Say it in conversation
+if asked; do not put it on a slide as a finding. What is measured is only that the
+same image and script give 1.7× on one GPU and 1.0× on the other.
 
 
 Deferred deliberately until all numbers were confirmed. Each item below is a
