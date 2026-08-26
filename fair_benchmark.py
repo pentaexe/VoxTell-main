@@ -249,18 +249,37 @@ print(f"  [pre]   {t_pre_v3:.3f}s  (first call incl. Numba JIT: {t_pre_v3_jit:.3
 
 # Phase 2: INT4 embedding — COLD measurement (disk + memory cache cleared)
 # Separates INT4 gain from cache gain (cache is attributed separately at 18.7×).
+# The cache key is sha256(f"{model}::{prompt}") and the predictor looks it up with
+# self.text_encoding_model — assert that matches TEXT_MODEL, or we would be deleting
+# a different key than the one the predictor reads and calling the result "cold".
+assert predictor.text_encoding_model == TEXT_MODEL, (
+    f"cache key mismatch: predictor uses {predictor.text_encoding_model!r}, "
+    f"benchmark clears {TEXT_MODEL!r} — the 'cold' measurement would be a cache hit"
+)
 for p in PROMPTS:
     disk_path = _prompt_cache_path(p, TEXT_MODEL)
     if disk_path.exists():
         disk_path.unlink()
 predictor._embed_cache.clear()
-print("  [embed] Cache cleared — measuring cold INT4 embedding...")
+
+# Prove the cache is actually empty at the moment of measurement.
+for p in PROMPTS:
+    assert not _prompt_cache_path(p, TEXT_MODEL).exists(), f"disk cache survived for {p!r}"
+assert not predictor._embed_cache, "in-memory cache survived clear()"
+print("  [embed] Cache verified empty — measuring cold INT4 embedding...")
 
 t0 = time.perf_counter()
 embeddings_v3 = predictor.embed_text_prompts(PROMPTS)
 torch.cuda.synchronize()
 t_embed_v3_cold = time.perf_counter() - t0
-print(f"  [embed cold INT4]  {t_embed_v3_cold:.3f}s")
+
+# A genuine encode writes the disk cache on the way out. If the file is missing,
+# no encode happened and the timing is meaningless.
+for p in PROMPTS:
+    assert _prompt_cache_path(p, TEXT_MODEL).exists(), (
+        f"no disk cache written for {p!r} — the 'cold' encode did not actually run"
+    )
+print(f"  [embed cold INT4]  {t_embed_v3_cold:.3f}s  (verified cold: cache empty before, written after)")
 
 t0 = time.perf_counter()
 _ = predictor.embed_text_prompts(PROMPTS)
