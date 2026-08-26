@@ -233,11 +233,19 @@ print(f"\n  Fair GPU speedup (v3 / v0_gpu): {speedup_fair:.1f}×")
 print(f"  Original reported speedup     : 26.0×  (CPU baseline, unfair)")
 print("=" * 70)
 
-# Save
+# Save — use a GPU-specific filename so H100 and RTX runs don't overwrite each other
+gpu_name = torch.cuda.get_device_name(0)
+if "H100" in gpu_name:
+    out_file = "fair_benchmark_h100_results.txt"
+elif "RTX" in gpu_name or "GeForce" in gpu_name:
+    out_file = "fair_benchmark_results.txt"
+else:
+    out_file = f"fair_benchmark_{gpu_name.replace(' ', '_')}_results.txt"
+
 lines = [
     "Fair GPU-vs-GPU Benchmark Results",
     "=" * 40,
-    f"GPU: {torch.cuda.get_device_name(0)}",
+    f"GPU: {gpu_name}",
     "",
     f"v0_gpu total : {total_v0:.2f}s  (FP16 GPU, tile_step=0.5, no cache, numpy preprocess)",
     f"v3 total     : {total_v3:.2f}s  (all optimizations)",
@@ -246,5 +254,5 @@ lines = [
     "Note: Original 26x used CPU baseline (FP32 text encoder VRAM overflow).",
     f"Fair GPU-only speedup is {speedup_fair:.1f}x.",
 ]
-Path("fair_benchmark_results.txt").write_text("\n".join(lines))
-print("\nSaved: fair_benchmark_results.txt")
+Path(out_file).write_text("\n".join(lines))
+print(f"\nSaved: {out_file}")
