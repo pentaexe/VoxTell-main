@@ -208,17 +208,31 @@ _bnb_config = BitsAndBytesConfig(
 tokenizer = AutoTokenizer.from_pretrained(TEXT_MODEL, padding_side="left")
 text_backbone = AutoModel.from_pretrained(TEXT_MODEL, quantization_config=_bnb_config).eval()
 
+def _encode(prompts):
+    wrapped = wrap_with_instruction(prompts)
+    tk = tokenizer(wrapped, padding=True, truncation=True, max_length=8192, return_tensors="pt")
+    tk = {k: v.to(DEVICE) for k, v in tk.items()}
+    with torch.inference_mode():
+        o = text_backbone(**tk)
+    return last_token_pool(o.last_hidden_state, tk["attention_mask"]).view(1, len(prompts), -1)
+
+# Warm the TEXT BACKBONE before timing. The earlier warmup covered only the
+# segmentation network, so the first bitsandbytes/CUDA kernel setup for the
+# quantized text model landed inside v0's timed embed — and v3, running second,
+# never paid it. On H100 job 56961173 that read as v0 4.270s vs v3 0.229s at
+# IDENTICAL INT4 precision, which is an ordering artifact, not a v3 advantage.
+print("  [embed] Warming text backbone (untimed)...")
+_t_warm0 = time.perf_counter()
+_ = _encode(PROMPTS)
+torch.cuda.synchronize()
+_t_backbone_warm = time.perf_counter() - _t_warm0
+print(f"  [embed] Backbone warm ({_t_backbone_warm:.3f}s absorbed, not counted).")
+
 t0 = time.perf_counter()
-wrapped = wrap_with_instruction(PROMPTS)
-tokens = tokenizer(wrapped, padding=True, truncation=True, max_length=8192, return_tensors="pt")
-tokens = {k: v.to(DEVICE) for k, v in tokens.items()}
-with torch.inference_mode():
-    out = text_backbone(**tokens)
-embeddings_v0 = last_token_pool(out.last_hidden_state, tokens["attention_mask"])
-embeddings_v0 = embeddings_v0.view(1, len(PROMPTS), -1)
+embeddings_v0 = _encode(PROMPTS)
 torch.cuda.synchronize()
 t_embed_v0 = time.perf_counter() - t0
-print(f"  [embed] {t_embed_v0:.3f}s")
+print(f"  [embed] {t_embed_v0:.3f}s  (backbone pre-warmed)")
 
 # Free text backbone VRAM before segmentation network
 del text_backbone
@@ -227,11 +241,21 @@ torch.cuda.empty_cache()
 # Phase 3: Sliding window (tile_step=0.5)
 print("  [slide] Running sliding window (tile_step=0.5)...")
 net_v0 = load_network()
+# Warm this exact code path too. On H100 job 56961173 v0 read 4.003s against v3's
+# 0.607s for the SAME 4 patches — the first arm was absorbing autotuning that the
+# second never paid. Warming here makes both arms measure steady-state compute.
+print("  [slide] Warming sliding-window path (untimed)...")
+_t_warm0 = time.perf_counter()
+_ = run_sliding_window(net_v0, data_v0, embeddings_v0, tile_step=0.5)
+torch.cuda.synchronize()
+_t_slide_warm = time.perf_counter() - _t_warm0
+print(f"  [slide] Warm ({_t_slide_warm:.3f}s absorbed, not counted).")
+
 t0 = time.perf_counter()
 _, n_patches_v0 = run_sliding_window(net_v0, data_v0, embeddings_v0, tile_step=0.5)
 torch.cuda.synchronize()
 t_slide_v0 = time.perf_counter() - t0
-print(f"  [slide] {t_slide_v0:.3f}s  ({n_patches_v0} patches)")
+print(f"  [slide] {t_slide_v0:.3f}s  ({n_patches_v0} patches, path pre-warmed)")
 
 t_post_v0 = 0.03  # negligible, consistent with prior measurements
 total_v0 = t_pre_v0 + t_embed_v0 + t_slide_v0 + t_post_v0

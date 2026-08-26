@@ -68,9 +68,12 @@ if Path(out).exists():
 print("Loading and preprocessing image...")
 raw_img, _ = NibabelIOWithReorient().read_images([IMAGE_PATH])
 # Numba crop-to-nonzero + z-score (v3 preprocessing — same for both arms)
-data_cropped, bbox, orig_shape = numba_crop_to_nonzero(raw_img[0])
+# numba_crop_to_nonzero takes (C,H,W,D) and returns (cropped, bbox) — 4D in,
+# two values out. Passing raw_img[0] (3D) and unpacking three was wrong.
+orig_shape = tuple(raw_img.shape[1:])
+data_cropped, bbox = numba_crop_to_nonzero(raw_img)
 data_norm = numpy_zscore_normalize(data_cropped.astype(np.float32))
-data_t = torch.from_numpy(data_norm[None])
+data_t = torch.from_numpy(data_norm)   # already (C,H,W,D)
 print(f"  Shape after crop: {tuple(data_t.shape)}\n")
 
 # ── Load segmentation network (shared between both arms) ──────────────────────
