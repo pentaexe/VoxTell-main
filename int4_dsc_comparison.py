@@ -227,16 +227,15 @@ print(f"  FP16 voxels segmented:  {fp16_vox:,}")
 print(f"  INT4 voxels segmented:  {int4_vox:,}")
 print(f"  Voxel delta:            {int4_vox - fp16_vox:+,}  ({100*(int4_vox-fp16_vox)/max(fp16_vox,1):+.2f}%)")
 print()
-print(f"  Agreement DSC (FP16 vs INT4): {agreement:.4f}")
-if agreement >= 0.99:
-    verdict = "PASS — agreement ≥ 0.99, INT4 introduces no meaningful quality loss"
-elif agreement >= 0.95:
-    verdict = "MARGINAL — agreement 0.95–0.99, INT4 introduces minor segmentation variation"
-else:
-    verdict = "FAIL — agreement < 0.95, INT4 introduces substantial segmentation change"
-print(f"  Verdict: {verdict}")
+print(f"  Output agreement DSC (FP16 vs INT4): {agreement:.4f}")
+print()
+print("  Note: Agreement DSC measures whether quantization changes the model output.")
+print("        It does NOT measure accuracy vs ground truth — both arms could drift")
+print("        from GT in the same direction and still agree perfectly.")
+print("        This is n=1 (one MNI brain, one prompt); interpret accordingly.")
 print()
 print(f"  Embed time: FP16 {t_embed_fp16:.3f}s  →  INT4 {t_embed_int4:.3f}s  ({t_embed_fp16/t_embed_int4:.1f}× faster)")
+print("  (Embed ratio measured here, not in fair_benchmark — both arms INT4 there.)")
 print("=" * 70)
 
 # Save results
@@ -244,10 +243,10 @@ gpu_name = torch.cuda.get_device_name(0)
 tag = "h100" if "H100" in gpu_name else gpu_name.replace(" ", "_")
 out = f"int4_dsc_results_{tag}.txt"
 lines = [
-    "INT4 vs FP16 DSC Agreement — VoxTell",
+    "INT4 vs FP16 Output Agreement — VoxTell",
     "=" * 40,
     f"GPU: {gpu_name}",
-    f"Image: {IMAGE_PATH}",
+    f"Image: {IMAGE_PATH}  (n=1)",
     f"Prompt: {PROMPTS}",
     f"tile_step: {TILE_STEP}  (v3, same both arms)",
     "",
@@ -255,12 +254,13 @@ lines = [
     f"INT4 voxels: {int4_vox:,}",
     f"Voxel delta: {int4_vox - fp16_vox:+,}",
     "",
-    f"Agreement DSC: {agreement:.4f}",
-    f"Verdict: {verdict}",
+    f"Output agreement DSC (FP16 vs INT4): {agreement:.4f}",
+    "Note: measures output change, NOT accuracy vs ground truth.",
+    "Note: n=1, one prompt — weak evidence about quantization generally.",
     "",
     f"Embed FP16: {t_embed_fp16:.3f}s",
     f"Embed INT4: {t_embed_int4:.3f}s",
-    f"Embed speedup: {t_embed_fp16/t_embed_int4:.1f}x",
+    f"Embed speedup (this script): {t_embed_fp16/t_embed_int4:.1f}x",
 ]
 Path(out).write_text("\n".join(lines))
 print(f"\nSaved: {out}")
