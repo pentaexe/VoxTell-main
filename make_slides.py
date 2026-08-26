@@ -235,7 +235,7 @@ slide_header(s, 'VoxTell — Bug Fix + Three Algorithmic Optimizations', '04 / 1
 txbox(s, 'All measurements on NVIDIA GeForce RTX 4070 SUPER (12 GB)  ·  DSC from experiment_log.md',
       0.5, 0.82, 12, 0.32, size=10, color=MUTED)
 
-tbl = add_table(s, 5, 4, 0.5, 1.2, 12.3, 3.0)
+tbl = add_table(s, 6, 4, 0.5, 1.2, 12.3, 3.5)
 hdrs = ['Change', 'Method', 'Speedup', 'DSC change']
 for c, h in enumerate(hdrs):
     cell_set(tbl.cell(0, c), h, bold=True, bg=NAVY, color=WHITE, size=11)
@@ -245,6 +245,7 @@ opt_rows = [
     ('Sliding window overlap', 'tile_step 0.5 → 0.75  (343 → 125 patches)', '3.6× sliding window', '+0.0006'),
     ('Embedding cache', 'LRU memory + SHA-256 disk cache', '18.7× warm re-query', 'Identical'),
     ('Numba preprocessing', '@njit(parallel=True) crop + z-score normalize', '1.4× preprocessing', 'Unchanged'),
+    ('INT4 (NF4) quantization', 'bitsandbytes NF4 on Qwen3: ~2GB vs ~8GB FP16 VRAM', '4× text (H100)', 'Unverified'),
 ]
 bug_bg = RGBColor(0xFF, 0xF3, 0xE0)
 for r, row in enumerate(opt_rows):
@@ -254,12 +255,12 @@ for r, row in enumerate(opt_rows):
         cell_set(tbl.cell(r+1, c), val, bg=bg, size=10,
                  color=sp_color, bold=(c == 2))
 
-txbox(s, 'Fair GPU-vs-GPU result (fair_benchmark_results.txt)', 0.5, 4.4, 7, 0.32, size=10, bold=True, color=AMBER)
+txbox(s, 'Fair GPU-vs-GPU results', 0.5, 4.9, 4, 0.32, size=10, bold=True, color=AMBER)
 txbox(s,
-      'With Qwen3 on GPU in both configs: v0_gpu (FP16, tile_step=0.5, no cache) 3.10s → '
-      'v3 (all opts) 2.38s. Algorithmic gain only: 1.3×.  '
-      'The 46.7× text speedup was eliminating the bug, not an algorithmic optimization.',
-      0.5, 4.75, 12, 0.9, size=11, color=NAVY)
+      'RTX 4070 SUPER (fair_benchmark_results.txt):  v0_gpu 3.10s → v3 2.38s  =  1.3× algorithmic gain\n'
+      'H100 MIG 3g.40gb (job 56948503):  v0_gpu 13.61s → v3 0.77s  =  17.6× full-stack gain (incl. INT4)\n'
+      'Bug fix excluded from fair comparison — FP16 GPU placement was a latent defect, not an optimization.',
+      0.5, 5.25, 12, 0.9, size=11, color=NAVY)
 
 
 # ── SLIDE 5: VoxTell — Accuracy ────────────────────────────────────────────
@@ -330,7 +331,7 @@ txbox(s,
       'nnInteractive accepts a 3-D bounding box directly — no text encoder, '
       'the encoder cost is zero. Geometric prompts are sufficient for the CVPR challenge format.\n\n'
       'A direct per-prompt latency comparison requires both models on the same hardware. '
-      'VoxTell H100 numbers are pending retrieval from cluster logs (benchmark_v0gpu_h100.py).',
+      'VoxTell H100 fair benchmark (job 56948503): v0_gpu 13.61s → v3 0.77s = 17.6× full-stack gain.',
       7.2, 1.35, 5.7, 4.5, size=11, color=NAVY)
 
 
@@ -558,11 +559,11 @@ for r, row in enumerate(summary_rows):
         cell_set(tbl.cell(r+1, c), val, bg=bg, size=10,
                  color=sp_color, bold=(c == 3 and bool(val)))
 
-txbox(s, 'VoxTell (RTX 4070 SUPER, experiment_log.md)', 0.5, 4.35, 7, 0.32, size=10, bold=True, color=AMBER)
+txbox(s, 'VoxTell — fair GPU-vs-GPU benchmark', 0.5, 4.35, 7, 0.32, size=10, bold=True, color=AMBER)
 txbox(s,
-      'Fair GPU-vs-GPU: 3.10s → 2.38s (1.3× algorithmic gain). '
-      'Bug fix excluded from fair comparison — it was a latent defect, not an optimization. '
-      'Accuracy maintained (< 0.001 DSC change across all four changes).',
+      'RTX 4070 SUPER: 3.10s → 2.38s (1.3× algorithmic gain, excl. bug fix).  '
+      'H100 MIG 3g.40gb (job 56948503): 13.61s → 0.77s (17.6× full-stack incl. INT4). '
+      'Accuracy maintained (< 0.001 DSC change across all changes).',
       0.5, 4.7, 12, 0.55, size=11, color=NAVY)
 
 txbox(s, 'nnInteractive (H100 MIG 3g.40gb, Fir cluster, job 56908464)', 0.5, 5.35, 8, 0.32, size=10, bold=True, color=TEAL)
