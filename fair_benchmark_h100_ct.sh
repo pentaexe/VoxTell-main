@@ -27,7 +27,7 @@ CT_CASE=$(ls -1 /scratch/brianx7/cvpr_val/3D_val_npz/CT_*.npz | sort | head -1)
 echo "CT case: $CT_CASE"
 
 export BENCH_IMAGE="$CT_CASE"
-# Abdominal CT — "brain" would be meaningless here.
-export BENCH_PROMPTS="liver"
+# BENCH_PROMPTS deliberately unset: these npz cases carry a 'text_prompts' key,
+# so the script reads the correct anatomy from the file rather than guessing it.
 
 python -u fair_benchmark.py

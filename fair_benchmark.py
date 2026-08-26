@@ -85,6 +85,19 @@ if IMAGE_PATH.endswith(".npz"):
     _npz = np.load(IMAGE_PATH, allow_pickle=True)
     raw_img = _npz["imgs"][None].astype(np.float32)
     print(f"  Loaded from npz key 'imgs'")
+    # These cases carry their own prompts — use them rather than guessing the
+    # anatomy from the filename. An explicit BENCH_PROMPTS still wins.
+    if "text_prompts" in _npz.files and not os.environ.get("BENCH_PROMPTS"):
+        _tp = _npz["text_prompts"]
+        _found = _tp.tolist() if hasattr(_tp, "tolist") else list(_tp)
+        if isinstance(_found, dict):
+            # {label_id: prompt} — take the prompts, ordered by label id
+            _found = [_found[k] for k in sorted(_found)]
+        _found = [str(p) for p in (_found if isinstance(_found, (list, tuple)) else [_found])]
+        if _found:
+            PROMPTS = _found[:1]   # one prompt keeps this comparable to the brain run
+            print(f"  Prompts from npz 'text_prompts': {_found}")
+            print(f"  Using: {PROMPTS}  (first only, to match the single-prompt brain run)")
 else:
     raw_img, _ = NibabelIOWithReorient().read_images([IMAGE_PATH])
 print(f"  Shape: {raw_img.shape}")
