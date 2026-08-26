@@ -36,7 +36,7 @@ conda activate voxtell                                      # local Windows
 | nnInteractive baseline (fold='all', autozoom=ON) | H100 MIG 3g.40gb | 0.2882s | job 56908464 |
 | nnInteractive torch.compile | H100 MIG 3g.40gb | 0.2146s | job 56908464 |
 
-VoxTell H100 numbers (benchmark_v0gpu_h100.py) need retrieval from Fir cluster logs before any cross-model comparison can be stated. RTX vs H100 is not directly comparable.
+VoxTell H100 numbers are unverified — benchmark_v0gpu_h100.py exists but may never have been run. Verify first: `sacct -u brianx7 --starttime=2026-03-01 --format=JobID,JobName%30,State,Start | grep -i vox`. If no VoxTell H100 job appears, submit benchmark_v0gpu_h100.sh (15 min, rrg-jma). RTX vs H100 is not directly comparable — do not state a ratio without same-hardware numbers.
 
 ## VoxTell changes (RTX 4070 SUPER, all from experiment_log.md)
 | Change | Method | Speedup | DSC change |

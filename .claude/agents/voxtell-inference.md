@@ -24,7 +24,7 @@ ssh brianx7@fir.alliancecan.ca
 | nnInteractive baseline (fold='all', autozoom=ON) | H100 MIG 3g.40gb | 0.2882s | job 56908464 |
 | nnInteractive torch.compile | H100 MIG 3g.40gb | 0.2146s | job 56908464 |
 
-Note: VoxTell H100 numbers (from benchmark_v0gpu_h100.py run on Fir) need retrieval from cluster logs before cross-model comparison can be stated. RTX vs H100 latency is not directly comparable.
+Note: VoxTell H100 numbers are unverified — benchmark_v0gpu_h100.py exists but may never have been run. Check with `sacct -u brianx7 --starttime=2026-03-01 --format=JobID,JobName%30,State,Start | grep -i vox` before claiming any H100 figure. If no job appears, submit benchmark_v0gpu_h100.sh to get a real number. RTX vs H100 is not directly comparable.
 
 ## Context
 VoxTell is the lab's own model submitted to the CVPR 2025 medical image segmentation challenge. The nnInteractive work is a separate optimization study on the challenge baseline model, requested by Dr. Jun Ma.
