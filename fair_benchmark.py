@@ -108,9 +108,24 @@ def run_sliding_window(net, data, embeddings, tile_step):
         pred_logits = pred_logits[(slice(None), *slicer_revert[1:])]
     return pred_logits, len(slicers)
 
+# ── GPU warmup — initialize CUDA context before any timed measurement ─────────
+# Without this, the first arm absorbs CUDA context init + cuDNN autotuning.
+print("Warming up GPU (dummy forward pass to initialize CUDA context)...")
+_dummy = torch.zeros((1, 1, 4, 4, 4), dtype=torch.float16, device=DEVICE)
+_net_warmup = load_network()
+with torch.inference_mode(), torch.autocast("cuda", enabled=True):
+    _dummy_emb = torch.zeros((1, 1, 2560), dtype=torch.float16, device=DEVICE)
+    _ = _net_warmup(_dummy, _dummy_emb)
+torch.cuda.synchronize()
+del _net_warmup, _dummy, _dummy_emb
+torch.cuda.empty_cache()
+print("GPU warm.\n")
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # V0_GPU — No optimizations, but FORCED onto GPU (FP16, tile_step=0.5)
 # This is the fair baseline: same hardware as v3, no algorithmic improvements
+# NOTE: v3 uses INT4 (NF4) text backbone; v0_gpu uses FP16. The comparison
+# therefore includes INT4 quantization as part of v3's advantage.
 # ═══════════════════════════════════════════════════════════════════════════════
 print("=" * 70)
 print("Running v0_gpu (GPU baseline — no optimizations except FP16 GPU fix)")
@@ -169,12 +184,16 @@ print(f"\n  v0_gpu TOTAL: {total_v0:.2f}s  ({n_patches_v0} patches, tile_step=0.
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # V3 — All optimizations on GPU
+# NOTE: v3 uses INT4 (NF4) text backbone; v0_gpu uses FP16.
+# We measure cold INT4 embedding (cache cleared) so this arm is cold-to-cold
+# with v0_gpu. We also measure the warm cache hit separately.
 # ═══════════════════════════════════════════════════════════════════════════════
 print("=" * 70)
-print("Running v3 (all optimizations — Numba + cache + tile_step=0.75)")
+print("Running v3 (all optimizations — Numba + INT4 + cache + tile_step=0.75)")
+print("  v3 text backbone: INT4 (NF4) via bitsandbytes  |  v0_gpu: FP16")
 print("=" * 70)
 
-from voxtell.inference.predictor import VoxTellPredictor
+from voxtell.inference.predictor import VoxTellPredictor, _prompt_cache_path
 
 predictor = VoxTellPredictor(model_dir=MODEL_DIR, device=DEVICE)
 
@@ -185,12 +204,26 @@ torch.cuda.synchronize()
 t_pre_v3 = time.perf_counter() - t0
 print(f"  [pre]   {t_pre_v3:.3f}s")
 
-# Phase 2: Embedding (cached)
+# Phase 2: INT4 embedding — COLD measurement (disk + memory cache cleared)
+# Separates INT4 gain from cache gain (cache is attributed separately at 18.7×).
+for p in PROMPTS:
+    disk_path = _prompt_cache_path(p, TEXT_MODEL)
+    if disk_path.exists():
+        disk_path.unlink()
+predictor._embed_cache.clear()
+print("  [embed] Cache cleared — measuring cold INT4 embedding...")
+
 t0 = time.perf_counter()
 embeddings_v3 = predictor.embed_text_prompts(PROMPTS)
 torch.cuda.synchronize()
-t_embed_v3 = time.perf_counter() - t0
-print(f"  [embed] {t_embed_v3:.3f}s  (cache hit)")
+t_embed_v3_cold = time.perf_counter() - t0
+print(f"  [embed cold INT4]  {t_embed_v3_cold:.3f}s")
+
+t0 = time.perf_counter()
+_ = predictor.embed_text_prompts(PROMPTS)
+torch.cuda.synchronize()
+t_embed_v3_warm = time.perf_counter() - t0
+print(f"  [embed warm cache] {t_embed_v3_warm:.3f}s  (cache hit, attributed separately)")
 
 # Phase 3: Sliding window (tile_step=0.75)
 t0 = time.perf_counter()
@@ -209,28 +242,47 @@ seg = np.zeros([prediction_binary.shape[0], *orig_shape], dtype=np.uint8)
 seg = insert_crop_into_image(seg, prediction_binary, bbox)
 t_post_v3 = time.perf_counter() - t0
 
-total_v3 = t_pre_v3 + t_embed_v3 + t_slide_v3 + t_post_v3
-print(f"\n  v3 TOTAL: {total_v3:.2f}s  ({len(slicers_v3)} patches, tile_step=0.75)\n")
+# cold total: cold FP16 vs cold INT4 — controls for cache, isolates other gains
+total_v3_cold = t_pre_v3 + t_embed_v3_cold + t_slide_v3 + t_post_v3
+# warm total: cold FP16 vs cached INT4 — production use case
+total_v3_warm = t_pre_v3 + t_embed_v3_warm + t_slide_v3 + t_post_v3
+print(f"\n  v3 TOTAL (cold embed): {total_v3_cold:.2f}s")
+print(f"  v3 TOTAL (warm cache): {total_v3_warm:.2f}s\n")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Results
 # ═══════════════════════════════════════════════════════════════════════════════
-speedup_fair = total_v0 / total_v3
+speedup_cold  = total_v0 / total_v3_cold   # cold FP16 → cold INT4 (no cache effect)
+speedup_warm  = total_v0 / total_v3_warm   # cold FP16 → warm INT4 (full stack)
+int4_gain     = t_embed_v0 / t_embed_v3_cold  # FP16 vs INT4 text encoding
 
 print("=" * 70)
 print("FAIR GPU-vs-GPU COMPARISON SUMMARY")
 print("=" * 70)
-print(f"\n{'Metric':<30} {'v0_gpu (baseline)':>18} {'v3 (optimized)':>16}")
-print("-" * 66)
-print(f"{'Preprocessing':<30} {t_pre_v0:>17.3f}s {t_pre_v3:>15.3f}s")
-print(f"{'Text embedding':<30} {t_embed_v0:>17.3f}s {t_embed_v3:>15.3f}s")
-print(f"{'Sliding window':<30} {t_slide_v0:>17.3f}s {t_slide_v3:>15.3f}s")
-print(f"{'Postprocessing':<30} {t_post_v0:>17.3f}s {t_post_v3:>15.3f}s")
-print(f"{'Patches':<30} {n_patches_v0:>18} {len(slicers_v3):>16}")
-print("-" * 66)
-print(f"{'TOTAL':<30} {total_v0:>17.2f}s {total_v3:>15.2f}s")
-print(f"\n  Fair GPU speedup (v3 / v0_gpu): {speedup_fair:.1f}×")
-print(f"  Original reported speedup     : 26.0×  (CPU baseline, unfair)")
+print()
+print("  Comparison A — cold-to-cold (controls for cache; isolates INT4 + algo gains)")
+print(f"  {'Metric':<28} {'v0_gpu (FP16)':>14} {'v3 (INT4)':>12}")
+print("  " + "-" * 56)
+print(f"  {'Preprocessing':<28} {t_pre_v0:>13.3f}s {t_pre_v3:>11.3f}s")
+print(f"  {'Text embedding (cold)':<28} {t_embed_v0:>13.3f}s {t_embed_v3_cold:>11.3f}s  ← INT4 vs FP16")
+print(f"  {'Sliding window':<28} {t_slide_v0:>13.3f}s {t_slide_v3:>11.3f}s")
+print(f"  {'Postprocessing':<28} {t_post_v0:>13.3f}s {t_post_v3:>11.3f}s")
+print(f"  {'Patches':<28} {n_patches_v0:>14} {len(slicers_v3):>12}")
+print("  " + "-" * 56)
+print(f"  {'TOTAL':<28} {total_v0:>13.2f}s {total_v3_cold:>11.2f}s")
+print(f"  Speedup (cold, no cache): {speedup_cold:.1f}×")
+print()
+print("  Comparison B — with embedding cache (production warm-query use case)")
+print(f"  {'Text embedding (warm)':<28} {t_embed_v0:>13.3f}s {t_embed_v3_warm:>11.3f}s")
+print(f"  {'TOTAL':<28} {total_v0:>13.2f}s {total_v3_warm:>11.2f}s")
+print(f"  Speedup (warm cache):     {speedup_warm:.1f}×")
+print()
+print(f"  INT4 text encoding gain (cold FP16 → cold INT4): {int4_gain:.1f}×")
+print(f"  Cache gain (cold INT4 → warm INT4):               {t_embed_v3_cold/t_embed_v3_warm:.1f}×")
+print()
+print("  Note: INT4 (NF4) is active in v3 by default (bitsandbytes NF4).")
+print("        DSC impact of INT4 quantization is NOT separately measured.")
+print(f"  Original reported speedup: 26.0×  (CPU baseline — unfair comparison)")
 print("=" * 70)
 
 # Save — use a GPU-specific filename so H100 and RTX runs don't overwrite each other
@@ -247,12 +299,17 @@ lines = [
     "=" * 40,
     f"GPU: {gpu_name}",
     "",
-    f"v0_gpu total : {total_v0:.2f}s  (FP16 GPU, tile_step=0.5, no cache, numpy preprocess)",
-    f"v3 total     : {total_v3:.2f}s  (all optimizations)",
-    f"Fair speedup : {speedup_fair:.1f}x",
+    f"v0_gpu total : {total_v0:.2f}s  (FP16, tile_step=0.5, no cache, numpy preprocess)",
+    f"v3 cold total: {total_v3_cold:.2f}s  (INT4, tile_step=0.75, no cache, Numba)",
+    f"v3 warm total: {total_v3_warm:.2f}s  (INT4, tile_step=0.75, cache hit, Numba)",
+    "",
+    f"Speedup cold (cold FP16 -> cold INT4, no cache): {speedup_cold:.1f}x",
+    f"Speedup warm (cold FP16 -> cached INT4):         {speedup_warm:.1f}x",
+    f"INT4 text encoding gain (FP16 cold -> INT4 cold): {int4_gain:.1f}x",
     "",
     "Note: Original 26x used CPU baseline (FP32 text encoder VRAM overflow).",
-    f"Fair GPU-only speedup is {speedup_fair:.1f}x.",
+    "Note: INT4 (NF4) active in v3 by default. DSC impact NOT measured.",
+    "Note: GPU warmup pass run before v0_gpu arm to initialize CUDA context.",
 ]
 Path(out_file).write_text("\n".join(lines))
 print(f"\nSaved: {out_file}")
