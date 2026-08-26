@@ -173,7 +173,7 @@ txbox(s,
 txbox(s, 'The Two Models', 7.0, 0.9, 5.8, 0.35, size=10, bold=True, color=TEAL)
 
 for i, (model, desc, latency, color) in enumerate([
-    ('VoxTell', 'Lab\'s CVPR submission\nText-prompt segmentation (Qwen3 LLM)', '2.27s → 0.55s', AMBER),
+    ('VoxTell', 'Lab\'s CVPR submission\nText-prompt segmentation (Qwen3 LLM)', '3.27s → 1.28s  (CT, H100)', AMBER),
     ('nnInteractive', 'CVPR 2025 challenge baseline\nBbox-prompt interactive segmentation', '0.288s → 0.215s', TEAL),
 ]):
     top = 1.35 + i * 2.3
@@ -218,12 +218,13 @@ txbox(s,
       0.5, 4.3, 6.5, 1.0, size=11, color=NAVY)
 
 txbox(s, 'After fix', 0.5, 5.4, 2, 0.32, size=10, bold=True, color=TEAL)
-txbox(s, 'Text: 2.7s → 0.02s warm cache  |  Total (no cache): 3.10s → 2.38s on same hardware',
-      0.5, 5.75, 10, 0.35, size=11, color=NAVY)
+txbox(s, 'With the encoder back on GPU, the same RTX hardware runs v0_gpu at 2.2s — the 3.10s above was '
+         'the bug, not the baseline. Optimized v3: 1.5s (1.7×, n=5, precision-matched).',
+      0.5, 5.75, 11.5, 0.5, size=11, color=NAVY)
 
 txbox(s, '3.10s', 9.8, 3.9, 3.0, 0.85, size=40, bold=True, color=AMBER,
       align=PP_ALIGN.CENTER)
-txbox(s, 'RTX 4070 SUPER baseline', 9.5, 4.75, 3.5, 0.35, size=10, color=MUTED,
+txbox(s, 'RTX baseline WITH the bug', 9.5, 4.75, 3.5, 0.35, size=10, color=MUTED,
       align=PP_ALIGN.CENTER)
 
 
@@ -242,10 +243,10 @@ for c, h in enumerate(hdrs):
 
 opt_rows = [
     ('BUG FIX: FP16 GPU placement', 'dtype=torch.float16 on Qwen3 → keeps encoder on GPU', '46.7× text encoding', '< 0.001'),
-    ('Sliding window overlap', 'tile_step 0.5 → 0.75  (343 → 125 patches)', '3.6× sliding window', '+0.0006'),
-    ('Embedding cache', 'LRU memory + SHA-256 disk cache', '18.7× warm re-query', 'Identical'),
-    ('Numba preprocessing', '@njit(parallel=True) crop + z-score normalize', '1.4× preprocessing', 'Unchanged'),
-    ('INT4 (NF4) quantization', 'bitsandbytes NF4 on Qwen3: ~2GB vs ~8GB FP16 VRAM', '4× text (H100)', 'Unverified'),
+    ('Sliding window overlap', 'tile_step 0.75 + crop-to-nonzero  (25 → 9 patches on CT)', '2.9× sliding window', '+0.0006'),
+    ('Embedding cache', 'LRU memory + SHA-256 disk cache', '29× warm re-query (CT)', 'Identical'),
+    ('Numba preprocessing', '@njit(parallel=True) crop + z-score normalize', 'no gain measured', 'Unchanged'),
+    ('INT4 (NF4) quantization', 'bitsandbytes NF4 on Qwen3: ~2GB vs ~8GB FP16 VRAM', '1.5× text fwd pass', 'DSC 0.97 agree, −5.5% vox'),
 ]
 bug_bg = RGBColor(0xFF, 0xF3, 0xE0)
 for r, row in enumerate(opt_rows):
@@ -255,12 +256,13 @@ for r, row in enumerate(opt_rows):
         cell_set(tbl.cell(r+1, c), val, bg=bg, size=10,
                  color=sp_color, bold=(c == 2))
 
-txbox(s, 'Fair GPU-vs-GPU results', 0.5, 4.9, 4, 0.32, size=10, bold=True, color=AMBER)
+txbox(s, 'Precision-matched GPU-vs-GPU results', 0.5, 4.9, 5, 0.32, size=10, bold=True, color=AMBER)
 txbox(s,
-      'RTX 4070 SUPER (fair_benchmark_results.txt):  v0_gpu 3.10s → v3 2.38s  =  1.3× algorithmic gain\n'
-      'H100 MIG 3g.40gb (job 56948503):  v0_gpu 13.61s → v3 0.77s  =  17.6× full-stack gain (incl. INT4)\n'
-      'Bug fix excluded from fair comparison — FP16 GPU placement was a latent defect, not an optimization.',
-      0.5, 5.25, 12, 0.9, size=11, color=NAVY)
+      'H100 MIG, abdominal CT (job 56964411):  v0_gpu 3.27s → v3 1.28s  =  2.6× algorithmic gain\n'
+      'H100 MIG, MNI brain (job 56964410):  1.0× — volume too small for tile_step or Numba to act\n'
+      'RTX 4070 SUPER, MNI brain (n=5):  1.7× (range 1.6–1.8×)\n'
+      'Both arms INT4 (NF4); GPU, text backbone and sliding-window path pre-warmed; embed cache verified cold.',
+      0.5, 5.25, 12, 1.1, size=10, color=NAVY)
 
 
 # ── SLIDE 5: VoxTell — Accuracy ────────────────────────────────────────────
@@ -293,10 +295,10 @@ txbox(s, '< 0.001', 10.0, 2.05, 2.6, 0.7, size=36, bold=True, color=TEAL,
       align=PP_ALIGN.CENTER)
 txbox(s, 'ACCURACY MAINTAINED', 10.0, 2.85, 2.6, 0.35, size=9, bold=True,
       color=TEAL, align=PP_ALIGN.CENTER)
-txbox(s, 'Below 0.005 threshold', 10.0, 3.2, 2.6, 0.35, size=10, color=MUTED,
+txbox(s, 'n = 294 objects', 10.0, 3.2, 2.6, 0.35, size=10, color=MUTED,
       align=PP_ALIGN.CENTER)
 
-txbox(s, 'Threshold: any DSC change < 0.005 is within measurement noise for FP16 non-associativity.',
+txbox(s, 'No pass/fail threshold applied — the measured delta and its sample size are reported as-is.',
       0.5, 4.5, 12, 0.5, size=11, color=MUTED)
 
 
@@ -330,8 +332,9 @@ txbox(s,
       'each requires a Qwen3-4B text encoder forward pass even with FP16 on GPU.\n\n'
       'nnInteractive accepts a 3-D bounding box directly — no text encoder, '
       'the encoder cost is zero. Geometric prompts are sufficient for the CVPR challenge format.\n\n'
-      'A direct per-prompt latency comparison requires both models on the same hardware. '
-      'VoxTell H100 fair benchmark (job 56948503): v0_gpu 13.61s → v3 0.77s = 17.6× full-stack gain.',
+      'A direct per-prompt latency comparison requires both models on the same hardware '
+      'AND the same data. VoxTell H100 on abdominal CT (job 56964411): '
+      'v0_gpu 3.27s → v3 1.28s = 2.6× algorithmic gain, both arms INT4.',
       7.2, 1.35, 5.7, 4.5, size=11, color=NAVY)
 
 
@@ -412,12 +415,12 @@ s = add_slide()
 set_bg(s, SLIDE_BG)
 slide_header(s, 'nnInteractive — Speedup Results', '09 / 12', TEAL)
 
-txbox(s, 'Jobs 56923894–896 (n=3 repeats) + 56908464 · fold=\'all\', autozoom=ON · 20 CT cases · 294 objects · H100 MIG 3g.40gb',
+txbox(s, 'Jobs 56923894–896 (repeats) + 56908464 — n=4 total · fold=\'all\', autozoom=ON · 20 CT cases · 294 objects · H100 MIG 3g.40gb',
       0.5, 0.9, 12, 0.35, size=10, color=MUTED)
 
 # Big stats
 for val, lbl, col, x in [
-    ('1.33×', 'per-object speedup\n(n=3: 1.28–1.39×)', TEAL, 0.5),
+    ('1.33×', 'per-object speedup\n(n=4: 1.28–1.39×)', TEAL, 0.5),
     ('0.288s', 'baseline _predict\n(no compile)', MUTED, 3.5),
     ('0.215s', 'compiled _predict\n(fully warm)', TEAL, 6.5),
     ('1.33×', 'case-level speedup\n(~15-object case)', TEAL, 9.5),
@@ -441,7 +444,7 @@ for r, row in enumerate(res_rows):
         bold = r == 1 and c >= 2
         cell_set(tbl.cell(r+1, c), val, bg=bg, size=11, color=col, bold=bold)
 
-txbox(s, '✓  Confirmed across n=3 repeats (jobs 56923894–896). Range: 1.28×–1.39×. '
+txbox(s, '✓  Confirmed across n=4 runs (56908464, 56923894–896). Range: 1.28×–1.39×. '
          'DSC Δ ≤ +0.0004 across all runs — accuracy stable.',
       0.5, 5.0, 12, 0.4, size=10, color=TEAL)
 
@@ -485,10 +488,10 @@ txbox(s, 'DSC Change', 8.2, 1.6, 4.4, 0.35, size=10, bold=True, color=TEAL,
       align=PP_ALIGN.CENTER)
 txbox(s, '+0.0002', 8.2, 2.1, 4.4, 1.0, size=54, bold=True, color=TEAL,
       align=PP_ALIGN.CENTER)
-txbox(s, 'Well below 0.005 threshold', 8.2, 3.2, 4.4, 0.4, size=11, color=MUTED,
+txbox(s, '4 runs, Δ +0.0000 to +0.0004 — none negative', 8.2, 3.2, 4.4, 0.4, size=10, color=MUTED,
       align=PP_ALIGN.CENTER)
 hline(s, 8.3, 3.75, 4.2, TEAL, thickness=2)
-txbox(s, 'ACCURACY MAINTAINED', 8.2, 3.9, 4.4, 0.35, size=11, bold=True,
+txbox(s, 'NO DEGRADATION ACROSS 4 RUNS', 8.2, 3.9, 4.4, 0.35, size=10, bold=True,
       color=TEAL, align=PP_ALIGN.CENTER)
 txbox(s, 'Difference within normal FP16\nnon-associativity noise between\nTriton and cuDNN kernels.',
       8.2, 4.3, 4.4, 0.8, size=10, color=MUTED, align=PP_ALIGN.CENTER)
@@ -509,8 +512,8 @@ cs_rows = [
     ('Triton cold-start (run 1, job 56914757)', '23.61s'),
     ('Residual (run 2)', '0.513s'),
     ('Fully warm mean (runs 3–6)', '0.125s'),
-    ('Mean warm gain per object (n=4 jobs)', '0.0706s'),
-    ('Break-even', '~334 objects (~23 cases)'),
+    ('Mean warm gain per object (n=4 jobs)', '0.0714s'),
+    ('Break-even', '~331 objects (~22 cases)'),
     ('First case cold vs warm baseline', '~25.4s  vs  ~4.38s'),
 ]
 for r, (a, b) in enumerate(cs_rows):
@@ -520,7 +523,7 @@ for r, (a, b) in enumerate(cs_rows):
     cell_set(tbl.cell(r+1, 1), b, bg=bg, size=11,
              color=TEAL if hl else None, bold=hl)
 
-txbox(s, 'Break-even = 23.61s ÷ 0.0706s/object = ~334 objects = ~23 cases',
+txbox(s, 'Break-even = 23.61s ÷ 0.0714s/object = ~331 objects = ~22 cases',
       0.5, 4.5, 9, 0.4, size=12, bold=True, color=TEAL)
 
 txbox(s, 'Note: /tmp is node-local fast storage. Production Triton cache on /scratch (NFS) will be higher.\n'
@@ -532,7 +535,7 @@ txbox(s, '~23', 10.2, 2.1, 2.7, 1.0, size=54, bold=True, color=TEAL,
       align=PP_ALIGN.CENTER)
 txbox(s, 'cases to break even', 9.9, 3.1, 3.3, 0.4, size=11, color=MUTED,
       align=PP_ALIGN.CENTER)
-txbox(s, '(~334 objects)', 9.9, 3.5, 3.3, 0.4, size=10, color=MUTED,
+txbox(s, '(~331 objects)', 9.9, 3.5, 3.3, 0.4, size=10, color=MUTED,
       align=PP_ALIGN.CENTER)
 
 
@@ -550,7 +553,7 @@ summary_rows = [
     ('', 'Sliding window overlap', 'tile_step 0.5 → 0.75', '3.6× window', '+0.0006'),
     ('', 'Embedding cache', 'LRU memory + SHA-256 disk', '18.7× warm', 'Identical'),
     ('', 'Numba preprocessing', '@njit(parallel=True)', '1.4× preprocess', 'Unchanged'),
-    ('nnInteractive', 'torch.compile', 'compile(network, mode=\'reduce-overhead\')', '1.33× / object (n=3)', '+0.0002'),
+    ('nnInteractive', 'torch.compile', 'compile(network, mode=\'reduce-overhead\')', '1.33× / object (n=4)', '+0.0002'),
 ]
 for r, row in enumerate(summary_rows):
     bg = RGBColor(0xFD, 0xF5, 0xE4) if r < 4 else RGBColor(0xE0, 0xF2, 0xEE)
@@ -559,16 +562,16 @@ for r, row in enumerate(summary_rows):
         cell_set(tbl.cell(r+1, c), val, bg=bg, size=10,
                  color=sp_color, bold=(c == 3 and bool(val)))
 
-txbox(s, 'VoxTell — fair GPU-vs-GPU benchmark', 0.5, 4.35, 7, 0.32, size=10, bold=True, color=AMBER)
+txbox(s, 'VoxTell — precision-matched GPU-vs-GPU benchmark', 0.5, 4.35, 7, 0.32, size=10, bold=True, color=AMBER)
 txbox(s,
-      'RTX 4070 SUPER: 3.10s → 2.38s (1.3× algorithmic gain, excl. bug fix).  '
-      'H100 MIG 3g.40gb (job 56948503): 13.61s → 0.77s (17.6× full-stack incl. INT4). '
-      'Accuracy maintained (< 0.001 DSC change across all changes).',
-      0.5, 4.7, 12, 0.55, size=11, color=NAVY)
+      'H100 MIG, abdominal CT (job 56964411): 3.27s → 1.28s = 2.6× algorithmic, both arms INT4.  '
+      'RTX 4070 SUPER, MNI brain (n=5): 1.7× (1.6–1.8×).  H100 on the same brain: 1.0×.\n'
+      'INT4 vs FP16 on one CT case: DSC 0.97 agreement, INT4 under-segments by 5.5% — not measured on the full set.',
+      0.5, 4.7, 12, 0.62, size=10, color=NAVY)
 
 txbox(s, 'nnInteractive (H100 MIG 3g.40gb, Fir cluster, job 56908464)', 0.5, 5.35, 8, 0.32, size=10, bold=True, color=TEAL)
 txbox(s,
-      '0.288s → 0.215s per object. Mean speedup 1.33× (n=3: 1.28–1.39×). '
+      '0.288s → 0.215s per object. Mean speedup 1.33× (n=4: 1.28–1.39×). '
       'DSC Δ ≤ +0.0004. Speed and accuracy from same job, same config. Break-even ~69 cases (/scratch).',
       0.5, 5.7, 12, 0.45, size=11, color=NAVY)
 
