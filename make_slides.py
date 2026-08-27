@@ -186,7 +186,7 @@ for i, (model, desc, latency, color) in enumerate([
 # ── SLIDE 3: VoxTell — Baseline ────────────────────────────────────────────
 s = add_slide()
 set_bg(s, SLIDE_BG)
-slide_header(s, 'VoxTell — Baseline & The Bug', '03 / 12', AMBER)
+slide_header(s, 'VoxTell — Why the Original 26× Was Wrong', '03 / 12', AMBER)
 
 txbox(s, 'Hardware: NVIDIA GeForce RTX 4070 SUPER (12 GB GDDR6X)  ·  v0_gpu: Qwen3-4B + nnUNet 3D',
       0.5, 0.9, 12, 0.35, size=10, color=MUTED)
@@ -196,9 +196,9 @@ tbl = add_table(s, 4, 3, 0.5, 1.3, 8.5, 2.0)
 for c, h in enumerate(['Phase', 'Latency (v0_gpu, RTX 4070 SUPER)', 'Notes']):
     cell_set(tbl.cell(0, c), h, bold=True, bg=NAVY, color=WHITE, size=11)
 rows_data = [
-    ('Text encoding — BUG: Qwen3-4B silently on CPU', '~2.7s', 'FP32 overflows 12 GB VRAM → CPU fallback'),
+    ('Text encoding — harness loaded FP32', '~2.7s', 'Benchmark bug: FP32 overflowed 12 GB → CPU. Model code was never FP32.'),
     ('Image preprocessing (numpy)', '~0.23s', 'Crop, z-score normalize, patch'),
-    ('Sliding window inference (GPU, warm)', '~0.17s', 'tile_step=0.5, ~343 patches, FP16'),
+    ('Sliding window inference (GPU, warm)', '~0.17s', 'tile_step=0.5, 4 patches on this volume, FP16'),
 ]
 for r, (a, b, c) in enumerate(rows_data):
     bg = alt_bg if r % 2 == 0 else WHITE
@@ -210,21 +210,21 @@ for r, (a, b, c) in enumerate(rows_data):
 txbox(s, 'Total: ~3.10s per prompt  —  dominated by text encoder running on CPU (silent bug)',
       0.5, 3.45, 10, 0.4, size=13, bold=True, color=AMBER)
 
-txbox(s, 'Root cause', 0.5, 3.95, 5, 0.32, size=10, bold=True, color=AMBER)
+txbox(s, 'Root cause — in the BENCHMARK, not the model', 0.5, 3.95, 7, 0.32, size=10, bold=True, color=AMBER)
 txbox(s,
-      'Qwen3-4B in FP32 requires ~16 GB VRAM. RTX 4070 SUPER has 12 GB. '
-      'PyTorch silently falls back to CPU when VRAM is insufficient. '
-      'Fix: load with dtype=torch.float16 → 8 GB VRAM, stays on GPU.',
-      0.5, 4.3, 6.5, 1.0, size=11, color=NAVY)
+      'The baseline harness loaded Qwen3-4B in FP32 (~16 GB) on a 12 GB card, so PyTorch '
+      'silently ran the encoder on CPU. VoxTell itself has always loaded FP16 or INT4 — '
+      'there is no FP32 path in the model code. This inflated the baseline, not the model.',
+      0.5, 4.3, 7.2, 1.1, size=11, color=NAVY)
 
-txbox(s, 'After fix', 0.5, 5.4, 2, 0.32, size=10, bold=True, color=TEAL)
-txbox(s, 'With the encoder back on GPU, the same RTX hardware runs v0_gpu at 2.2s — the 3.10s above was '
-         'the bug, not the baseline. Optimized v3: 1.5s (1.7×, n=5, precision-matched).',
-      0.5, 5.75, 11.5, 0.5, size=11, color=NAVY)
+txbox(s, 'Why this matters', 0.5, 5.5, 3, 0.32, size=10, bold=True, color=TEAL)
+txbox(s, 'Correcting it is a measurement fix, not an optimization — so it earns no row in the '
+         'speedup table. A correctly measured RTX baseline is 2.2s, not 3.10s.',
+      0.5, 5.85, 11.5, 0.5, size=11, color=NAVY)
 
 txbox(s, '3.10s', 9.8, 3.9, 3.0, 0.85, size=40, bold=True, color=AMBER,
       align=PP_ALIGN.CENTER)
-txbox(s, 'RTX baseline WITH the bug', 9.5, 4.75, 3.5, 0.35, size=10, color=MUTED,
+txbox(s, 'mis-measured baseline', 9.5, 4.75, 3.5, 0.35, size=10, color=MUTED,
       align=PP_ALIGN.CENTER)
 
 
@@ -236,23 +236,21 @@ slide_header(s, 'VoxTell — Bug Fix + Three Algorithmic Optimizations', '04 / 1
 txbox(s, 'All measurements on NVIDIA GeForce RTX 4070 SUPER (12 GB)  ·  DSC from experiment_log.md',
       0.5, 0.82, 12, 0.32, size=10, color=MUTED)
 
-tbl = add_table(s, 6, 4, 0.5, 1.2, 12.3, 3.5)
+tbl = add_table(s, 5, 4, 0.5, 1.2, 12.3, 3.0)
 hdrs = ['Change', 'Method', 'Speedup', 'DSC change']
 for c, h in enumerate(hdrs):
     cell_set(tbl.cell(0, c), h, bold=True, bg=NAVY, color=WHITE, size=11)
 
 opt_rows = [
-    ('BUG FIX: FP16 GPU placement', 'dtype=torch.float16 on Qwen3 → keeps encoder on GPU', '46.7× text encoding', '< 0.001'),
     ('Sliding window overlap', 'tile_step 0.75 + crop-to-nonzero  (25 → 9 patches on CT)', '2.9× sliding window', '+0.0006'),
     ('Embedding cache', 'LRU memory + SHA-256 disk cache', '29× warm re-query (CT)', 'Identical'),
     ('Numba preprocessing', '@njit(parallel=True) crop + z-score normalize', 'no gain measured', 'Unchanged'),
     ('INT4 (NF4) quantization', 'bitsandbytes NF4 on Qwen3: ~2GB vs ~8GB FP16 VRAM', '1.5× text fwd pass', 'DSC 0.97 agree, −5.5% vox'),
 ]
-bug_bg = RGBColor(0xFF, 0xF3, 0xE0)
 for r, row in enumerate(opt_rows):
-    bg = bug_bg if r == 0 else (alt_bg if r % 2 == 1 else WHITE)
+    bg = alt_bg if r % 2 == 1 else WHITE
     for c, val in enumerate(row):
-        sp_color = (AMBER if r == 0 else TEAL) if c == 2 else (RGBColor(0x1A, 0x6A, 0x30) if c == 3 else None)
+        sp_color = TEAL if c == 2 else (RGBColor(0x1A, 0x6A, 0x30) if c == 3 else None)
         cell_set(tbl.cell(r+1, c), val, bg=bg, size=10,
                  color=sp_color, bold=(c == 2))
 
@@ -549,10 +547,10 @@ for c, h in enumerate(['Model', 'Optimization', 'Method', 'Speedup', 'DSC impact
     cell_set(tbl.cell(0, c), h, bold=True, bg=NAVY, color=WHITE, size=11)
 
 summary_rows = [
-    ('VoxTell', 'BUG FIX: FP16 GPU placement', 'dtype=torch.float16 on Qwen3', '46.7× text', '< 0.001'),
-    ('', 'Sliding window overlap', 'tile_step 0.5 → 0.75', '3.6× window', '+0.0006'),
-    ('', 'Embedding cache', 'LRU memory + SHA-256 disk', '18.7× warm', 'Identical'),
-    ('', 'Numba preprocessing', '@njit(parallel=True)', '1.4× preprocess', 'Unchanged'),
+    ('VoxTell', 'Sliding window + crop', 'tile_step 0.75, crop-to-nonzero', '2.9× window (CT)', '+0.0006'),
+    ('', 'Embedding cache', 'LRU memory + SHA-256 disk', '29× warm (CT)', 'Identical'),
+    ('', 'INT4 (NF4) text backbone', 'bitsandbytes, ~2 GB vs ~8 GB', '1.5× fwd pass', 'DSC 0.97, −5.5% vox'),
+    ('', 'Numba preprocessing', '@njit(parallel=True)', 'no gain measured', 'Unchanged'),
     ('nnInteractive', 'torch.compile', 'compile(network, mode=\'reduce-overhead\')', '1.33× / object (n=4)', '+0.0002'),
 ]
 for r, row in enumerate(summary_rows):
