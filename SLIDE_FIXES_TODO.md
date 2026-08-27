@@ -8,10 +8,12 @@ Job 56964411, `CT_AMOS_amos_0018.npz`, 63×512×512, prompt read from the file
 text backbone and sliding-window path all pre-warmed, embed cache verified empty
 before the cold measurement. Patches 25 → 9. Sliding window 3.083s → 1.059s = 2.91×.
 
-⚠️ **This is n=1 and it is the headline.** The brain benchmark was run nine times
-*because two runs disagreed by 33%*. The same standard has to apply here before it
-goes in front of Dr. Ma. Submit 2–3 serialized repeats of `fair_benchmark_h100_ct.sh`
-and cite mean with range. Until then this number has had exactly one run on one case.
+✅ **RESOLVED — n=4 with serialized repeats** (56964411, 56966901–903).
+
+Per-run Comparison A: **2.6, 2.8, 2.6, 2.8** → **mean 2.7×, range 2.6–2.8×**.
+
+A 7.4% spread — tighter than nnInteractive's 8.6% and far tighter than the brain's
+33%. This is the most stable measurement in the project. Cite **2.7× (n=4, 2.6–2.8×)**.
 
 **The headline speedup fell four times as methodology tightened:**
 

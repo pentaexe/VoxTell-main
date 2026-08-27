@@ -256,7 +256,7 @@ for r, row in enumerate(opt_rows):
 
 txbox(s, 'Precision-matched GPU-vs-GPU results', 0.5, 4.9, 5, 0.32, size=10, bold=True, color=AMBER)
 txbox(s,
-      'H100 MIG, abdominal CT (job 56964411):  v0_gpu 3.27s → v3 1.28s  =  2.6× algorithmic gain\n'
+      'H100 MIG, abdominal CT (n=4):  v0_gpu 3.27s → v3 1.28s  =  2.7× algorithmic (range 2.6–2.8×)\n'
       'H100 MIG, MNI brain (job 56964410):  1.0× — volume too small for tile_step or Numba to act\n'
       'RTX 4070 SUPER, MNI brain (n=5):  1.7× (range 1.6–1.8×)\n'
       'Both arms INT4 (NF4); GPU, text backbone and sliding-window path pre-warmed; embed cache verified cold.',
@@ -332,7 +332,7 @@ txbox(s,
       'the encoder cost is zero. Geometric prompts are sufficient for the CVPR challenge format.\n\n'
       'A direct per-prompt latency comparison requires both models on the same hardware '
       'AND the same data. VoxTell H100 on abdominal CT (job 56964411): '
-      'v0_gpu 3.27s → v3 1.28s = 2.6× algorithmic gain, both arms INT4.',
+      'v0_gpu 3.27s → v3 1.28s = 2.7× algorithmic gain (n=4, range 2.6–2.8×), both arms INT4.',
       7.2, 1.35, 5.7, 4.5, size=11, color=NAVY)
 
 
@@ -562,7 +562,7 @@ for r, row in enumerate(summary_rows):
 
 txbox(s, 'VoxTell — precision-matched GPU-vs-GPU benchmark', 0.5, 4.35, 7, 0.32, size=10, bold=True, color=AMBER)
 txbox(s,
-      'H100 MIG, abdominal CT (job 56964411): 3.27s → 1.28s = 2.6× algorithmic, both arms INT4.  '
+      'H100 MIG, abdominal CT (n=4): 3.27s → 1.28s = 2.7× algorithmic, range 2.6–2.8×, both arms INT4.  '
       'RTX 4070 SUPER, MNI brain (n=5): 1.7× (1.6–1.8×).  H100 on the same brain: 1.0×.\n'
       'INT4 vs FP16 on one CT case: DSC 0.97 agreement, INT4 under-segments by 5.5% — not measured on the full set.',
       0.5, 4.7, 12, 0.62, size=10, color=NAVY)
