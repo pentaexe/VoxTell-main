@@ -1,588 +1,290 @@
 """
-Generate slides.pptx — VoxTell & nnInteractive Optimization deck.
+Generate slides.pptx — VoxTell & nnInteractive optimization deck.
 Run: python make_slides.py
-Imports cleanly into Google Slides via File → Import slides.
+
+Design: minimal. White ground, ink text, one amber accent used sparingly,
+hairline rules instead of filled boxes. One idea per slide.
+Every figure on these slides traces to a measured source — see SPEAKER_NOTES.md.
 """
 from pptx import Presentation
-from pptx.util import Inches, Pt, Emu
+from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
-from pptx.oxml.ns import qn
-from pptx.util import Inches, Pt
-import copy
-from lxml import etree
 
 # ── Palette ────────────────────────────────────────────────────────────────
-NAVY   = RGBColor(0x0F, 0x1C, 0x2E)
-AMBER  = RGBColor(0xC8, 0x91, 0x2B)
-TEAL   = RGBColor(0x1D, 0x7A, 0x72)
+INK    = RGBColor(0x1A, 0x1F, 0x26)   # body text
+ACCENT = RGBColor(0xB5, 0x7E, 0x1F)   # amber, used sparingly
+TEAL   = RGBColor(0x1D, 0x6F, 0x69)   # second series only
+MUTED  = RGBColor(0x8A, 0x91, 0x9B)   # captions, sources
+RULE   = RGBColor(0xDD, 0xDA, 0xD3)   # hairlines
+BG     = RGBColor(0xFC, 0xFC, 0xFA)
 WHITE  = RGBColor(0xFF, 0xFF, 0xFF)
-OFFWHT = RGBColor(0xF2, 0xEF, 0xE8)
-MUTED  = RGBColor(0x5A, 0x64, 0x78)
-SLIDE_BG = RGBColor(0xFA, 0xFA, 0xF8)
 
-# ── Canvas ─────────────────────────────────────────────────────────────────
+L      = 0.9      # left margin
+CW     = 11.5     # content width
+
 prs = Presentation()
 prs.slide_width  = Inches(13.33)
 prs.slide_height = Inches(7.5)
-
-BLANK = prs.slide_layouts[6]  # blank layout
-
-
-def add_slide():
-    return prs.slides.add_slide(BLANK)
+BLANK = prs.slide_layouts[6]
 
 
-def set_bg(slide, color):
-    bg = slide.background
-    fill = bg.fill
-    fill.solid()
-    fill.fore_color.rgb = color
+def slide(bg=BG):
+    s = prs.slides.add_slide(BLANK)
+    f = s.background.fill
+    f.solid()
+    f.fore_color.rgb = bg
+    return s
 
 
-def txbox(slide, text, l, t, w, h, size=18, bold=False, color=None,
-          align=PP_ALIGN.LEFT, italic=False, font='Calibri'):
-    box = slide.shapes.add_textbox(Inches(l), Inches(t), Inches(w), Inches(h))
+def tx(s, text, l, t, w, h, size=13, bold=False, color=INK,
+       align=PP_ALIGN.LEFT, space=None):
+    box = s.shapes.add_textbox(Inches(l), Inches(t), Inches(w), Inches(h))
     box.word_wrap = True
     tf = box.text_frame
     tf.word_wrap = True
-    p = tf.paragraphs[0]
-    p.alignment = align
-    run = p.add_run()
-    run.text = text
-    run.font.size = Pt(size)
-    run.font.bold = bold
-    run.font.italic = italic
-    run.font.name = font
-    if color:
-        run.font.color.rgb = color
+    for i, line in enumerate(text.split("\n")):
+        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+        p.alignment = align
+        if space:
+            p.space_after = Pt(space)
+        r = p.add_run()
+        r.text = line
+        r.font.size = Pt(size)
+        r.font.bold = bold
+        r.font.name = "Calibri"
+        r.font.color.rgb = color
     return box
 
 
-def hline(slide, l, t, w, color, thickness=4):
-    from pptx.util import Pt as PPt
-    line = slide.shapes.add_shape(
-        1,  # MSO_SHAPE_TYPE.RECTANGLE
-        Inches(l), Inches(t), Inches(w), Inches(thickness / 72)
-    )
-    line.fill.solid()
-    line.fill.fore_color.rgb = color
-    line.line.fill.background()
-    return line
+def rule(s, l, t, w, color=RULE, thick=1):
+    sh = s.shapes.add_shape(1, Inches(l), Inches(t), Inches(w), Inches(thick / 72))
+    sh.fill.solid()
+    sh.fill.fore_color.rgb = color
+    sh.line.fill.background()
+    return sh
 
 
-def rect(slide, l, t, w, h, fill_color, line_color=None):
-    shape = slide.shapes.add_shape(1, Inches(l), Inches(t), Inches(w), Inches(h))
-    shape.fill.solid()
-    shape.fill.fore_color.rgb = fill_color
-    if line_color:
-        shape.line.color.rgb = line_color
-    else:
-        shape.line.fill.background()
-    return shape
+def head(s, title, num):
+    tx(s, title, L, 0.55, 9.8, 0.6, size=26, bold=True)
+    tx(s, num, 11.0, 0.68, 1.4, 0.4, size=10, color=MUTED, align=PP_ALIGN.RIGHT)
+    rule(s, L, 1.25, CW)
 
 
-def add_table(slide, rows, cols, l, t, w, h,
-              header_bg=NAVY, header_fg=WHITE,
-              row_colors=None, data=None):
-    tbl = slide.shapes.add_table(rows, cols, Inches(l), Inches(t),
-                                  Inches(w), Inches(h)).table
+def stat(s, value, label, l, t, w, vsize=52, color=INK):
+    """A large number with a small label beneath it."""
+    tx(s, value, l, t, w, 0.9, size=vsize, bold=True, color=color)
+    tx(s, label, l, t + 0.95, w, 0.5, size=10, color=MUTED)
+
+
+def table(s, headers, rows, l, t, w, h, widths=None):
+    n = len(rows) + 1
+    tbl = s.shapes.add_table(n, len(headers), Inches(l), Inches(t),
+                             Inches(w), Inches(h)).table
+    if widths:
+        for i, ww in enumerate(widths):
+            tbl.columns[i].width = Inches(ww)
+    for c, htxt in enumerate(headers):
+        cell = tbl.cell(0, c)
+        cell.fill.solid()
+        cell.fill.fore_color.rgb = BG
+        p = cell.text_frame.paragraphs[0]
+        r = p.add_run(); r.text = htxt
+        r.font.size = Pt(10); r.font.bold = True
+        r.font.name = "Calibri"; r.font.color.rgb = MUTED
+    for ri, row in enumerate(rows, start=1):
+        for ci, val in enumerate(row):
+            cell = tbl.cell(ri, ci)
+            cell.fill.solid()
+            cell.fill.fore_color.rgb = WHITE if ri % 2 else BG
+            p = cell.text_frame.paragraphs[0]
+            r = p.add_run(); r.text = str(val)
+            r.font.size = Pt(11)
+            r.font.name = "Calibri"
+            r.font.color.rgb = INK
+            r.font.bold = (ci == 0)
     return tbl
 
 
-def cell_set(cell, text, size=11, bold=False, color=None,
-             bg=None, align=PP_ALIGN.LEFT):
-    tf = cell.text_frame
-    tf.word_wrap = True
-    p = tf.paragraphs[0]
-    p.alignment = align
-    if p.runs:
-        run = p.runs[0]
-    else:
-        run = p.add_run()
-    run.text = text
-    run.font.size = Pt(size)
-    run.font.bold = bold
-    run.font.name = 'Calibri'
-    if color:
-        run.font.color.rgb = color
-    if bg:
-        cell.fill.solid()
-        cell.fill.fore_color.rgb = bg
+def source(s, text):
+    tx(s, text, L, 6.85, CW, 0.4, size=9, color=MUTED)
 
 
-def slide_header(slide, title, num, accent=TEAL, dark_bg=False):
-    hline(slide, 0.4, 0.25, 0.06, accent, thickness=40)
-    fg = WHITE if dark_bg else NAVY
-    txbox(slide, title, 0.55, 0.15, 10, 0.5,
-          size=22, bold=True, color=fg)
-    txbox(slide, num, 11.8, 0.15, 1.4, 0.5,
-          size=11, color=MUTED, align=PP_ALIGN.RIGHT)
+# ═══ 1 — Title ═════════════════════════════════════════════════════════════
+s = slide(RGBColor(0x14, 0x1A, 0x22))
+tx(s, "CVPR 2025 · Medical Image Segmentation", L, 2.15, 9, 0.4,
+   size=11, color=RGBColor(0xB5, 0x7E, 0x1F))
+tx(s, "Making Two Segmentation\nModels Faster", L, 2.65, 11, 1.8,
+   size=42, bold=True, color=RGBColor(0xF4, 0xF2, 0xEE))
+rule(s, L, 4.65, 1.2, ACCENT, thick=3)
+tx(s, "VoxTell  ·  nnInteractive  ·  NVIDIA H100 MIG", L, 4.95, 10, 0.4,
+   size=14, color=RGBColor(0x9A, 0xA3, 0xAF))
+tx(s, "Brian Xiao   ·   Fir cluster, Alliance Canada   ·   August 2026",
+   L, 6.6, 10, 0.4, size=10, color=RGBColor(0x6E, 0x77, 0x84))
 
+# ═══ 2 — The two models ════════════════════════════════════════════════════
+s = slide()
+head(s, "Two models, two prompting styles", "02")
 
-# ── SLIDE 1: Title ─────────────────────────────────────────────────────────
-s = add_slide()
-set_bg(s, NAVY)
+tx(s, "VoxTell", L, 1.75, 5, 0.5, size=20, bold=True, color=ACCENT)
+tx(s, "Our lab's CVPR submission. Segments from a free-text prompt\n"
+      "(\"the spleen\"), which requires a 4-billion-parameter language\n"
+      "model to encode the text before segmentation begins.",
+   L, 2.3, 5.1, 1.6, size=13, space=4)
 
-txbox(s, 'CVPR 2025  ·  MEDICAL IMAGE SEGMENTATION', 0.9, 1.2, 11, 0.4,
-      size=10, color=AMBER, font='Calibri')
-txbox(s, 'VoxTell & nnInteractive', 0.9, 1.7, 11, 1.0,
-      size=40, bold=True, color=OFFWHT, font='Calibri')
-txbox(s, 'Optimization on NVIDIA H100 MIG', 0.9, 2.75, 9, 0.6,
-      size=24, color=RGBColor(0xB0, 0xBC, 0xC8), font='Calibri')
+tx(s, "nnInteractive", 6.9, 1.75, 5, 0.5, size=20, bold=True, color=TEAL)
+tx(s, "The challenge baseline. Segments from a 3-D bounding box.\n"
+      "No text encoder at all, so it starts from a much lower\n"
+      "per-prompt cost.",
+   6.9, 2.3, 5.1, 1.6, size=13, space=4)
 
-hline(s, 0.9, 3.5, 0.6, AMBER, thickness=6)
+rule(s, L, 4.3, CW)
+tx(s, "Both were already accurate. The question was whether they could be made\nfaster without giving that up.",
+   L, 4.6, 10, 1.0, size=17, space=6)
+source(s, "Accuracy measured as Dice Similarity Coefficient — overlap between prediction and expert annotation, 0 to 1.")
 
-txbox(s, 'torch.compile  ·  Embedding Cache  ·  Sliding Window  ·  Numba Preprocessing',
-      0.9, 3.7, 10, 0.4, size=12, color=RGBColor(0x70, 0x80, 0x90))
+# ═══ 3 — The audit ═════════════════════════════════════════════════════════
+s = slide()
+head(s, "The first number I reported was wrong", "03")
 
-txbox(s, 'Brian Xiao  ·  rrg-jma  ·  Fir cluster (Alliance Canada)',
-      0.9, 6.6, 10, 0.4, size=10, color=MUTED)
+tx(s, "VoxTell's speedup, as measurement error was removed:", L, 1.7, 8, 0.4,
+   size=13, color=MUTED)
 
-txbox(s, 'Brian Xiao  ·  Aug 2026',
-      0.9, 6.9, 10, 0.4, size=10, color=MUTED)
-
-# ── SLIDE 2: What is Medical Image Segmentation ────────────────────────────
-s = add_slide()
-set_bg(s, SLIDE_BG)
-slide_header(s, 'What is Medical Image Segmentation?', '02 / 12', AMBER)
-
-txbox(s, 'The Problem', 0.5, 0.9, 5.5, 0.35, size=10, bold=True, color=AMBER)
-txbox(s,
-      'A CT or MRI scan is a 3-D volume of voxels. A segmentation model draws '
-      'a precise 3-D boundary around each organ or lesion — producing a binary '
-      'mask the radiologist or downstream algorithm can act on.',
-      0.5, 1.3, 5.5, 1.0, size=13, color=NAVY)
-
-txbox(s, 'Accuracy Metric — DSC', 0.5, 2.5, 5.5, 0.35, size=10, bold=True, color=TEAL)
-txbox(s,
-      'Dice Similarity Coefficient (DSC) = 2|A∩B| / (|A|+|B|)\n'
-      '  0 = no overlap     1 = perfect\n'
-      '  > 0.70 = clinically acceptable\n'
-      '  nnInteractive: 0.779  (881 CT cases)\n'
-      '  VoxTell: 0.809  (5 CT cases)',
-      0.5, 2.9, 5.5, 1.4, size=12, color=NAVY)
-
-txbox(s, 'Why Speed Matters', 0.5, 4.5, 5.5, 0.35, size=10, bold=True, color=AMBER)
-txbox(s,
-      'A hospital CT pipeline may process hundreds of cases per day. '
-      'Each case has 10–20 objects to segment. Every millisecond saved per object '
-      'compounds across the full workload.',
-      0.5, 4.9, 5.5, 1.0, size=12, color=NAVY)
-
-# Right column — models
-txbox(s, 'The Two Models', 7.0, 0.9, 5.8, 0.35, size=10, bold=True, color=TEAL)
-
-for i, (model, desc, latency, color) in enumerate([
-    ('VoxTell', 'Lab\'s CVPR submission\nText-prompt segmentation (Qwen3 LLM)', '3.27s → 1.28s  (CT, H100)', AMBER),
-    ('nnInteractive', 'CVPR 2025 challenge baseline\nBbox-prompt interactive segmentation', '0.288s → 0.215s', TEAL),
+for i, (val, why, col) in enumerate([
+    ("26×",   "baseline ran on CPU",              MUTED),
+    ("17.6×", "no GPU warm-up; cached vs uncached", MUTED),
+    ("7.1×",  "first arm absorbed start-up cost", MUTED),
+    ("2.7×",  "measured correctly",               ACCENT),
 ]):
-    top = 1.35 + i * 2.3
-    rect(s, 7.0, top, 5.8, 1.9, RGBColor(0xF0, 0xED, 0xE6))
-    txbox(s, model, 7.2, top + 0.1, 4, 0.4, size=15, bold=True, color=color)
-    txbox(s, desc, 7.2, top + 0.5, 4.5, 0.6, size=11, color=NAVY)
-    txbox(s, latency, 7.2, top + 1.2, 5.2, 0.4, size=13, bold=True, color=color)
+    x = L + i * 2.95
+    tx(s, val, x, 2.3, 2.7, 0.95, size=44, bold=True, color=col)
+    tx(s, why, x, 3.3, 2.7, 0.8, size=10, color=MUTED)
 
+rule(s, L, 4.5, CW)
+tx(s, "Every drop came from correcting how I measured — never from changing the code.\n"
+      "The optimizations always did what they do; the benchmark was flattering them.",
+   L, 4.85, 11, 1.1, size=17, space=6)
+source(s, "Final figure: n=4 repeats, both arms INT4, GPU and text backbone pre-warmed, embedding cache verified empty.")
 
-# ── SLIDE 3: VoxTell — Baseline ────────────────────────────────────────────
-s = add_slide()
-set_bg(s, SLIDE_BG)
-slide_header(s, 'VoxTell — Why the Original 26× Was Wrong', '03 / 12', AMBER)
+# ═══ 4 — What made it faster ═══════════════════════════════════════════════
+s = slide()
+head(s, "VoxTell — what actually made it faster", "04")
 
-txbox(s, 'Hardware: NVIDIA GeForce RTX 4070 SUPER (12 GB GDDR6X)  ·  v0_gpu: Qwen3-4B + nnUNet 3D',
-      0.5, 0.9, 12, 0.35, size=10, color=MUTED)
+table(s, ["Change", "Effect", "DSC"], [
+    ("Sliding window", "tile_step 0.75 + crop to non-zero: 25 → 9 patches", "+0.0003"),
+    ("Embedding cache", "repeat prompts return a stored tensor", "identical"),
+    ("INT4 text backbone", "1.5× faster encode, 2 GB VRAM instead of 8 GB", "0.97 agreement"),
+    ("Numba preprocessing", "no measurable gain at this volume size", "unchanged"),
+], L, 1.7, CW, 2.3, widths=[2.9, 6.4, 2.2])
 
-alt_bg = RGBColor(0xF5, 0xF2, 0xEB)
-tbl = add_table(s, 4, 3, 0.5, 1.3, 8.5, 2.0)
-for c, h in enumerate(['Phase', 'Correctly measured (RTX, n=5)', 'Notes']):
-    cell_set(tbl.cell(0, c), h, bold=True, bg=NAVY, color=WHITE, size=11)
-rows_data = [
-    ('Text encoding (INT4, on GPU)', '0.151s', 'The FP32 harness bug put this on CPU at ~2.7s'),
-    ('Image preprocessing (numpy)', '0.075s', 'Crop, z-score normalize, patch'),
-    ('Sliding window (tile_step=0.5)', '1.92s', '4 patches on this volume, FP16'),
-]
-for r, (a, b, c) in enumerate(rows_data):
-    bg = alt_bg if r % 2 == 0 else WHITE
-    bug_color = AMBER if r == 0 else None
-    cell_set(tbl.cell(r+1, 0), a, bg=bg, size=10, color=bug_color)
-    cell_set(tbl.cell(r+1, 1), b, bg=bg, size=10, align=PP_ALIGN.CENTER)
-    cell_set(tbl.cell(r+1, 2), c, bg=bg, size=10, color=MUTED)
+rule(s, L, 4.35, CW)
+stat(s, "2.7×", "end-to-end, abdominal CT, H100 MIG  ·  range 2.6–2.8× over 4 runs", L, 4.7, 6)
+tx(s, "3.27s  →  1.28s", 7.3, 4.85, 5, 0.7, size=24, color=MUTED)
+source(s, "CVPR validation case CT_AMOS_amos_0018 (63×512×512). Both arms INT4 (NF4) — precision held constant, so this is algorithmic gain only.")
 
-txbox(s, 'Correctly measured baseline: 2.18s.  The reported 3.10s came from the encoder running on CPU.',
-      0.5, 3.45, 10, 0.4, size=13, bold=True, color=AMBER)
+# ═══ 5 — VoxTell accuracy ══════════════════════════════════════════════════
+s = slide()
+head(s, "VoxTell — accuracy held", "05")
 
-txbox(s, 'Root cause — in the BENCHMARK, not the model', 0.5, 3.95, 7, 0.32, size=10, bold=True, color=AMBER)
-txbox(s,
-      'The baseline harness loaded Qwen3-4B in FP32 (~16 GB) on a 12 GB card, so PyTorch '
-      'silently ran the encoder on CPU. VoxTell itself has always loaded FP16 or INT4 — '
-      'there is no FP32 path in the model code. This inflated the baseline, not the model.',
-      0.5, 4.3, 7.2, 1.1, size=11, color=NAVY)
+stat(s, "+0.0003", "change in mean DSC after optimization", L, 1.9, 5, vsize=56, color=TEAL)
 
-txbox(s, 'Why this matters', 0.5, 5.5, 3, 0.32, size=10, bold=True, color=TEAL)
-txbox(s, 'Correcting it is a measurement fix, not an optimization — so it earns no row in the '
-         'speedup table. The 3.10s figure was the bug, not the model.',
-      0.5, 5.85, 11.5, 0.5, size=11, color=NAVY)
+tx(s, "0.8090  →  0.8093", L, 3.5, 6, 0.6, size=22, color=MUTED)
+tx(s, "65 objects across 5 abdominal CT cases.", L, 4.15, 6, 0.4, size=12, color=MUTED)
 
-txbox(s, '2.18s', 9.9, 3.9, 2.9, 0.8, size=36, bold=True, color=AMBER,
-      align=PP_ALIGN.CENTER)
-txbox(s, 'correct RTX baseline', 9.7, 4.7, 3.3, 0.35, size=10, color=MUTED,
-      align=PP_ALIGN.CENTER)
+rule(s, 7.2, 1.9, 0.04, ACCENT, thick=90)
+tx(s, "One caveat worth stating", 7.5, 1.9, 4.6, 0.4, size=13, bold=True)
+tx(s, "INT4 quantization is on by default. On one CT case it agreed with "
+      "full precision at 0.97 DSC and segmented 5.5% fewer voxels — a "
+      "consistent under-segmentation, not noise.\n\n"
+      "I have not measured that across the validation set, so I am reporting "
+      "the direction, not a bound.",
+   7.5, 2.4, 4.6, 2.4, size=12, space=8)
+source(s, "VoxTell DSC from accuracy_results.csv. INT4 comparison is n=1 and measures output agreement, not accuracy against ground truth.")
 
+# ═══ 6 — nnInteractive result ══════════════════════════════════════════════
+s = slide()
+head(s, "nnInteractive — compiling the network", "06")
 
-# ── SLIDE 4: VoxTell — Optimizations ──────────────────────────────────────
-s = add_slide()
-set_bg(s, SLIDE_BG)
-slide_header(s, 'VoxTell — Four Algorithmic Optimizations', '04 / 12', AMBER)
+tx(s, "torch.compile(network, mode='reduce-overhead')", L, 1.7, 8, 0.4,
+   size=14, color=MUTED)
+tx(s, "One line. It fuses kernels and cuts per-call dispatch overhead.",
+   L, 2.15, 8, 0.4, size=13)
 
-txbox(s, 'All measurements on NVIDIA GeForce RTX 4070 SUPER (12 GB)  ·  DSC from experiment_log.md',
-      0.5, 0.82, 12, 0.32, size=10, color=MUTED)
+rule(s, L, 2.85, CW)
 
-tbl = add_table(s, 5, 4, 0.5, 1.2, 12.3, 3.0)
-hdrs = ['Change', 'Method', 'Speedup', 'DSC change']
-for c, h in enumerate(hdrs):
-    cell_set(tbl.cell(0, c), h, bold=True, bg=NAVY, color=WHITE, size=11)
+stat(s, "1.33×", "per object  ·  range 1.28–1.39× over 4 runs", L, 3.3, 5, color=ACCENT)
+stat(s, "+0.0002", "mean DSC change  ·  294 objects", 6.9, 3.3, 5, color=TEAL)
 
-opt_rows = [
-    ('Sliding window overlap', 'tile_step 0.75 + crop-to-nonzero  (25 → 9 patches on CT)', '2.9× sliding window', '+0.0006'),
-    ('Embedding cache', 'LRU memory + SHA-256 disk cache', '29× warm re-query (CT)', 'Identical'),
-    ('Numba preprocessing', '@njit(parallel=True) crop + z-score normalize', 'no gain measured', 'Unchanged'),
-    ('INT4 (NF4) quantization', 'bitsandbytes NF4 on Qwen3: ~2GB vs ~8GB FP16 VRAM', '1.5× text fwd pass', 'DSC 0.97 agree, −5.5% vox'),
-]
-for r, row in enumerate(opt_rows):
-    bg = alt_bg if r % 2 == 1 else WHITE
-    for c, val in enumerate(row):
-        sp_color = TEAL if c == 2 else (RGBColor(0x1A, 0x6A, 0x30) if c == 3 else None)
-        cell_set(tbl.cell(r+1, c), val, bg=bg, size=10,
-                 color=sp_color, bold=(c == 2))
+tx(s, "0.288s → 0.215s per object", L, 5.4, 6, 0.4, size=14, color=MUTED)
+tx(s, "No run showed degradation.", 6.9, 5.4, 5, 0.4, size=14, color=MUTED)
+source(s, "20 CT cases from the CVPR validation set, fold='all' checkpoint, H100 MIG 3g.40gb. Speed and accuracy from the same jobs.")
 
-txbox(s, 'Precision-matched GPU-vs-GPU result', 0.5, 4.9, 5, 0.32, size=10, bold=True, color=AMBER)
-txbox(s,
-      'H100 MIG 3g.40gb, CVPR validation CT (n=4):  v0_gpu 3.27s → v3 1.28s  =  2.7× (range 2.6–2.8×)\n'
-      'Both arms INT4 (NF4). GPU, text backbone and sliding-window path pre-warmed; embed cache verified cold.\n'
-      'Measured on CT, not the MNI brain: at 189×233×197 against a 192³ patch the brain gives 4 patches at '
-      'either tile_step, so it cannot exercise these optimizations.',
-      0.5, 5.25, 12, 1.1, size=10, color=NAVY)
+# ═══ 7 — Break-even ════════════════════════════════════════════════════════
+s = slide()
+head(s, "The speedup is not free at the start", "07")
 
+tx(s, "Compiling costs 23.6 seconds before the first prediction. "
+      "That has to be earned back.", L, 1.75, 10.5, 0.5, size=17)
 
-# ── SLIDE 5: VoxTell — Accuracy ────────────────────────────────────────────
-s = add_slide()
-set_bg(s, SLIDE_BG)
-slide_header(s, 'VoxTell — Accuracy Verification', '05 / 12', AMBER)
+rule(s, L, 2.6, CW)
 
-txbox(s, 'Speed optimizations preserve DSC; INT4 quantization changes the output', 0.5, 0.9, 9.2, 0.4,
-      size=13, color=MUTED)
+stat(s, "23.6s", "one-time compilation", L, 3.0, 3.4)
+stat(s, "0.071s", "saved per object", 4.5, 3.0, 3.4)
+stat(s, "~22 cases", "before it pays for itself", 8.0, 3.0, 4, color=ACCENT)
 
-tbl = add_table(s, 5, 3, 0.5, 1.4, 9, 2.8)
-for c, h in enumerate(['Setting', 'Mean DSC', 'vs Baseline']):
-    cell_set(tbl.cell(0, c), h, bold=True, bg=NAVY, color=WHITE, size=12)
-acc_rows = [
-    ('v0_gpu  (tile_step=0.5)', '0.8090', '—'),
-    ('v3  (tile_step=0.75)', '0.8093', '+0.0003'),
-    ('INT4 vs FP16 backbone', 'agreement 0.9716', '−5.5% voxels'),
-    ('Embedding cache', 'bit-identical', 'returns stored tensor'),
-]
-for r, row in enumerate(acc_rows):
-    bg = alt_bg if r % 2 == 0 else WHITE
-    for c, val in enumerate(row):
-        gc = RGBColor(0x1A, 0x6A, 0x30) if c == 2 and val not in ('—', 'Identical') else None
-        cell_set(tbl.cell(r+1, c), val, bg=bg, size=11, color=gc)
+tx(s, "Worth it for a batch of 900 validation cases. Not worth it for a radiologist\n"
+      "segmenting three scans — there the compile cost is never recovered.",
+   L, 4.9, 11, 1.0, size=15, space=6)
+source(s, "23.6s measured on node-local /tmp; the shared filesystem will be slower, so this is a lower bound. ~331 objects at 14.7 objects per case.")
 
-rect(s, 9.8, 1.4, 3.0, 2.8, RGBColor(0xE8, 0xF4, 0xF0))
-txbox(s, 'DSC Change', 10.0, 1.6, 2.6, 0.35, size=10, bold=True, color=TEAL,
-      align=PP_ALIGN.CENTER)
-txbox(s, '+0.0003', 10.0, 2.05, 2.6, 0.7, size=32, bold=True, color=TEAL,
-      align=PP_ALIGN.CENTER)
-txbox(s, 'tile_step: DSC held', 10.0, 2.85, 2.6, 0.35, size=9, bold=True,
-      color=TEAL, align=PP_ALIGN.CENTER)
-txbox(s, 'n = 65 objects, 5 CT cases', 10.0, 3.2, 2.6, 0.35, size=9, color=MUTED,
-      align=PP_ALIGN.CENTER)
+# ═══ 8 — How it was validated ══════════════════════════════════════════════
+s = slide()
+head(s, "How I checked the numbers", "08")
 
-txbox(s, 'VoxTell DSC from accuracy_results.csv (5 AMOS CT cases, 65 objects). No pass/fail threshold applied. INT4 agreement is n=1 and measures output change, not accuracy vs ground truth.',
-      0.5, 4.5, 12, 0.5, size=11, color=MUTED)
-
-
-# ── SLIDE 6: nnInteractive Intro ───────────────────────────────────────────
-s = add_slide()
-set_bg(s, SLIDE_BG)
-slide_header(s, 'nnInteractive — What It Is', '06 / 12', TEAL)
-
-txbox(s, 'CVPR 2025 challenge baseline model', 0.5, 0.9, 6.4, 0.35, size=12, color=MUTED)
-
-for i, (title, body, col) in enumerate([
-    ('Bbox prompting', 'User provides a 3-D bounding box around the target object. '
-     'nnInteractive predicts the segmentation mask inside that box. '
-     'No text encoder — direct geometric prompt.', TEAL),
-    ('autozoom', 'Iterative refinement at multiple scales. If the initial prediction '
-     'is confident, it exits early ("No zoom out necessary"). On this CVPR validation set, '
-     'autozoom never fired — overhead is approximately zero.', TEAL),
-    ('fold=\'all\' checkpoint', 'The official CVPR 2025 checkpoint (DSC ~0.79). '
-     'fold=0 gives ~0.33 DSC — undertrained weights; never compare against it.', AMBER),
+for i, (t1, t2) in enumerate([
+    ("Hold precision constant",
+     "Both arms run INT4. A speedup that comes from quantization is not an algorithmic speedup."),
+    ("Warm everything before timing",
+     "GPU, text backbone, and sliding-window path. Whichever arm runs first otherwise absorbs start-up cost."),
+    ("Prove the cache is empty",
+     "The script asserts the embedding cache is cleared before each cold measurement, and written after."),
+    ("Repeat, and report the range",
+     "Every headline figure is n≥4 and quoted with its spread, never as a single number."),
 ]):
-    top = 1.3 + i * 1.65
-    hline(s, 0.5, top, 0.04, col, thickness=60)
-    txbox(s, title, 0.7, top + 0.05, 4.5, 0.35, size=13, bold=True, color=col)
-    txbox(s, body, 0.7, top + 0.45, 5.5, 0.9, size=11, color=NAVY)
+    y = 1.7 + i * 1.02
+    rule(s, L, y + 0.12, 0.035, ACCENT, thick=26)
+    tx(s, t1, L + 0.35, y, 2.9, 0.4, size=14, bold=True)
+    tx(s, t2, 4.3, y + 0.02, 8.1, 0.8, size=12, color=MUTED)
 
-# right: why nnInteractive is faster
-txbox(s, 'Why nnInteractive is faster than VoxTell', 7.2, 0.9, 5.5, 0.35,
-      size=10, bold=True, color=TEAL)
-txbox(s,
-      'VoxTell accepts free-text prompts ("brain", "left kidney") — '
-      'each requires a Qwen3-4B text encoder forward pass even with FP16 on GPU.\n\n'
-      'nnInteractive accepts a 3-D bounding box directly — no text encoder, '
-      'the encoder cost is zero. Geometric prompts are sufficient for the CVPR challenge format.\n\n'
-      'A direct per-prompt latency comparison requires both models on the same hardware '
-      'AND the same data. VoxTell H100 on abdominal CT (job 56964411): '
-      'v0_gpu 3.27s → v3 1.28s = 2.7× algorithmic gain (n=4, range 2.6–2.8×), both arms INT4.',
-      7.2, 1.35, 5.7, 4.5, size=11, color=NAVY)
+rule(s, L, 5.9, CW)
+tx(s, "Running the same script on two different GPUs is what exposed the largest error.",
+   L, 6.2, 11, 0.5, size=15)
+source(s, "Identical phases behaving differently on an RTX 4070 SUPER and an H100 revealed the ordering artifact behind the 7.1× figure.")
 
+# ═══ 9 — Summary ═══════════════════════════════════════════════════════════
+s = slide()
+head(s, "Where both models landed", "09")
 
-# ── SLIDE 7: nnInteractive Profiling ──────────────────────────────────────
-s = add_slide()
-set_bg(s, SLIDE_BG)
-slide_header(s, 'nnInteractive — Baseline Profiling', '07 / 12', TEAL)
+table(s, ["", "Speedup", "Accuracy", "Evidence"], [
+    ("VoxTell", "2.7×  (2.6–2.8×)", "+0.0003 DSC", "4 runs, abdominal CT"),
+    ("nnInteractive", "1.33×  (1.28–1.39×)", "+0.0002 DSC", "4 runs, 294 objects"),
+], L, 1.8, CW, 1.5, widths=[2.6, 3.0, 2.6, 3.3])
 
-txbox(s, 'fold=\'all\', do_autozoom=True, torch_n_threads=os.cpu_count(), H100 MIG 3g.40gb',
-      0.5, 0.9, 12, 0.35, size=11, color=MUTED)
+rule(s, L, 3.7, CW)
 
-tbl = add_table(s, 4, 3, 0.5, 1.3, 7.5, 2.1)
-for c, h in enumerate(['Phase', 'Latency', 'Frequency']):
-    cell_set(tbl.cell(0, c), h, bold=True, bg=NAVY, color=WHITE, size=12)
-ph_rows = [
-    ('set_image', '0.345s', 'Once per case — image encoding + preprocessing'),
-    ('_predict (cold, first call)', '~2.4s', 'CUDA kernel JIT — one-time per session'),
-    ('_predict (warm)', '0.288s', 'Per object ← optimization target'),
-]
-for r, row in enumerate(ph_rows):
-    bg = alt_bg if r % 2 == 0 else WHITE
-    col3 = TEAL if r == 2 else None
-    bold3 = r == 2
-    cell_set(tbl.cell(r+1, 0), row[0], bg=bg, size=11)
-    cell_set(tbl.cell(r+1, 1), row[1], bg=bg, size=11, color=col3, bold=bold3)
-    cell_set(tbl.cell(r+1, 2), row[2], bg=bg, size=11, color=MUTED)
+tx(s, "Still open", L, 4.05, 5, 0.4, size=13, bold=True, color=ACCENT)
+tx(s, "INT4's effect on accuracy is measured on one case, not the validation set.\n"
+      "nnInteractive's compile gain is below the run-to-run spread on small batches.",
+   L, 4.5, 6.0, 1.2, size=12, color=MUTED, space=6)
 
-txbox(s, 'A 15-object case: 0.345s set_image + 15 × 0.288s = 4.66s total',
-      0.5, 3.55, 8, 0.4, size=13, bold=True, color=NAVY)
-txbox(s, '_predict warm is the bottleneck — set_image is < 8% of case time.',
-      0.5, 4.0, 8, 0.35, size=11, color=MUTED)
+tx(s, "What I'd do next", 7.3, 4.05, 5, 0.4, size=13, bold=True, color=ACCENT)
+tx(s, "Run the INT4 comparison across all 881 validation cases, which turns a\n"
+      "directional finding into a bound worth acting on.",
+   7.3, 4.5, 5.0, 1.2, size=12, color=MUTED, space=6)
 
-txbox(s, '0.288s', 9.2, 3.2, 3.5, 0.85, size=44, bold=True, color=TEAL,
-      align=PP_ALIGN.CENTER)
-txbox(s, 'per object (warm baseline)', 8.9, 4.05, 4.0, 0.4, size=10, color=MUTED,
-      align=PP_ALIGN.CENTER)
+rule(s, L, 6.1, CW)
+tx(s, "The most useful thing I built was a benchmark that kept catching itself.",
+   L, 6.4, 11, 0.5, size=16, bold=True)
 
-
-# ── SLIDE 8: torch.compile ────────────────────────────────────────────────
-s = add_slide()
-set_bg(s, SLIDE_BG)
-slide_header(s, 'nnInteractive — torch.compile Optimization', '08 / 12', TEAL)
-
-txbox(s, 'Implementation', 0.5, 0.9, 5.5, 0.35, size=10, bold=True, color=TEAL)
-
-rect(s, 0.5, 1.25, 5.8, 0.85, RGBColor(0x0F, 0x1C, 0x2E))
-txbox(s, '# One line after session initialization\nsession.network = torch.compile(\n    session.network, mode=\'reduce-overhead\'\n)',
-      0.65, 1.3, 5.5, 0.75, size=11, color=RGBColor(0x7D, 0xC4, 0xBC))
-
-txbox(s, 'How it works', 0.5, 2.3, 5.5, 0.35, size=10, bold=True, color=AMBER)
-txbox(s,
-      'PyTorch normally interprets the model graph in Python on every forward pass. '
-      'torch.compile traces the graph and emits optimized Triton GPU kernels via the '
-      'inductor backend. With mode=\'reduce-overhead\', CUDA graphs eliminate CPU→GPU '
-      'launch latency on repeated calls with identical input shapes — exactly the '
-      'nnInteractive inference pattern.',
-      0.5, 2.7, 6.0, 1.5, size=11, color=NAVY)
-
-txbox(s, 'Key requirements', 7.0, 0.9, 6.0, 0.35, size=10, bold=True, color=TEAL)
-for i, (title, body) in enumerate([
-    ('N_WARMUP = 2',
-     'Warmup 1 triggers Triton compilation (~24s). Warmup 2 stabilizes dispatch (~0.51s). '
-     'Runs 3+ are fully warm. With N_WARMUP=1, compiled latency reads ~0.54s and speedup ≈ 1.0×.'),
-    ('Env vars before import torch',
-     'TORCHINDUCTOR_CACHE_DIR is read at import time, not at compile time. '
-     'Set XDG_CACHE_HOME, TORCH_HOME, and TORCHINDUCTOR_CACHE_DIR before any torch import.'),
-    ('fold=\'all\' required',
-     'The official checkpoint (DSC ~0.79). fold=0 gives ~0.33 DSC — not a valid comparison baseline.'),
-]):
-    top = 1.35 + i * 1.6
-    hline(s, 7.0, top, 0.04, TEAL, thickness=50)
-    txbox(s, title, 7.2, top + 0.04, 5.5, 0.35, size=12, bold=True, color=TEAL)
-    txbox(s, body, 7.2, top + 0.45, 5.8, 0.85, size=10, color=NAVY)
-
-
-# ── SLIDE 9: nnInteractive Results ────────────────────────────────────────
-s = add_slide()
-set_bg(s, SLIDE_BG)
-slide_header(s, 'nnInteractive — Speedup Results', '09 / 12', TEAL)
-
-txbox(s, 'Jobs 56923894–896 (repeats) + 56908464 — n=4 total · fold=\'all\', autozoom=ON · 20 CT cases · 294 objects · H100 MIG 3g.40gb',
-      0.5, 0.9, 12, 0.35, size=10, color=MUTED)
-
-# Big stats
-for val, lbl, col, x in [
-    ('1.33×', 'per-object speedup\n(n=4: 1.28–1.39×)', TEAL, 0.5),
-    ('0.288s', 'baseline _predict\n(no compile)', MUTED, 3.5),
-    ('0.215s', 'compiled _predict\n(fully warm)', TEAL, 6.5),
-    ('1.33×', 'case-level speedup\n(~15-object case)', TEAL, 9.5),
-]:
-    txbox(s, val, x, 1.35, 2.9, 0.85, size=34, bold=True, color=col,
-          align=PP_ALIGN.CENTER)
-    txbox(s, lbl, x, 2.2, 2.9, 0.55, size=10, color=MUTED,
-          align=PP_ALIGN.CENTER)
-
-tbl = add_table(s, 3, 5, 0.5, 3.0, 12.3, 1.8)
-for c, h in enumerate(['Setting', 'set_image', '_predict (warm)', '~15-obj case', 'vs Baseline']):
-    cell_set(tbl.cell(0, c), h, bold=True, bg=NAVY, color=WHITE, size=11)
-res_rows = [
-    ('Baseline (fold=\'all\', autozoom=ON)', '0.345s', '0.288s', '4.38s', '1.0×'),
-    ('torch.compile (fold=\'all\', autozoom=ON)', '0.345s', '0.215s', '3.30s', '1.33×'),
-]
-for r, row in enumerate(res_rows):
-    bg = alt_bg if r == 0 else RGBColor(0xE0, 0xF2, 0xEE)
-    for c, val in enumerate(row):
-        col = TEAL if (r == 1 and c >= 2) else None
-        bold = r == 1 and c >= 2
-        cell_set(tbl.cell(r+1, c), val, bg=bg, size=11, color=col, bold=bold)
-
-txbox(s, '✓  Confirmed across n=4 runs (56908464, 56923894–896). Range: 1.28×–1.39×. '
-         'DSC Δ ≤ +0.0004 across all runs — accuracy stable.',
-      0.5, 5.0, 12, 0.4, size=10, color=TEAL)
-
-
-# ── SLIDE 10: nnInteractive Accuracy ──────────────────────────────────────
-s = add_slide()
-set_bg(s, SLIDE_BG)
-slide_header(s, 'nnInteractive — Accuracy Verification', '10 / 12', TEAL)
-
-txbox(s, 'Same job as latency (56908464) — speed and accuracy measured under identical conditions',
-      0.5, 0.9, 11, 0.35, size=11, color=MUTED)
-
-txbox(s, 'Experimental setup', 0.5, 1.35, 5.5, 0.35, size=10, bold=True, color=TEAL)
-for i, line in enumerate([
-    '20 CT cases from CVPR 2025 validation set',
-    '294 objects evaluated (bbox-prompted)',
-    'fold=\'all\' checkpoint — same as 0.7794 CodaBench submission',
-    'Ground truth evaluated locally against expert annotations',
-    'Baseline and compiled run back-to-back — no config differences',
-]):
-    txbox(s, '·  ' + line, 0.5, 1.75 + i * 0.42, 6.2, 0.38, size=11, color=NAVY)
-
-txbox(s, 'DSC results', 0.5, 4.0, 5.5, 0.35, size=10, bold=True, color=TEAL)
-tbl = add_table(s, 4, 3, 0.5, 4.4, 6.5, 1.8)
-for c, h in enumerate(['Setting', 'Mean DSC', 'Objects']):
-    cell_set(tbl.cell(0, c), h, bold=True, bg=NAVY, color=WHITE, size=11)
-dsc_rows = [
-    ('Baseline (fold=\'all\')', '0.7914', '294'),
-    ('torch.compile (fold=\'all\')', '0.7916', '294'),
-    ('Difference', '+0.0002', '—'),
-]
-for r, row in enumerate(dsc_rows):
-    bg = alt_bg if r % 2 == 0 else WHITE
-    gc = RGBColor(0x1A, 0x6A, 0x30) if r == 2 else None
-    for c, val in enumerate(row):
-        cell_set(tbl.cell(r+1, c), val, bg=bg, size=11,
-                 color=gc, bold=(r == 2))
-
-rect(s, 8.0, 1.4, 4.8, 4.8, RGBColor(0xE0, 0xF2, 0xEE))
-txbox(s, 'DSC Change', 8.2, 1.6, 4.4, 0.35, size=10, bold=True, color=TEAL,
-      align=PP_ALIGN.CENTER)
-txbox(s, '+0.0002', 8.2, 2.1, 4.4, 1.0, size=54, bold=True, color=TEAL,
-      align=PP_ALIGN.CENTER)
-txbox(s, '4 runs, Δ +0.0000 to +0.0004 — none negative', 8.2, 3.2, 4.4, 0.4, size=10, color=MUTED,
-      align=PP_ALIGN.CENTER)
-hline(s, 8.3, 3.75, 4.2, TEAL, thickness=2)
-txbox(s, 'NO DEGRADATION ACROSS 4 RUNS', 8.2, 3.9, 4.4, 0.35, size=10, bold=True,
-      color=TEAL, align=PP_ALIGN.CENTER)
-txbox(s, 'Difference within normal FP16\nnon-associativity noise between\nTriton and cuDNN kernels.',
-      8.2, 4.3, 4.4, 0.8, size=10, color=MUTED, align=PP_ALIGN.CENTER)
-
-
-# ── SLIDE 11: Cold Start ──────────────────────────────────────────────────
-s = add_slide()
-set_bg(s, SLIDE_BG)
-slide_header(s, 'nnInteractive — Cold Start & Break-even', '11 / 12', TEAL)
-
-txbox(s, 'Job 56914757 · fully isolated /tmp inductor cache · all three env vars set before import torch',
-      0.5, 0.9, 11, 0.35, size=10, color=MUTED)
-
-tbl = add_table(s, 7, 2, 0.5, 1.35, 7.5, 3.0)
-cell_set(tbl.cell(0, 0), 'Metric', bold=True, bg=NAVY, color=WHITE, size=11)
-cell_set(tbl.cell(0, 1), 'Value', bold=True, bg=NAVY, color=WHITE, size=11)
-cs_rows = [
-    ('Triton cold-start (run 1, job 56914757)', '23.61s'),
-    ('Residual (run 2)', '0.513s'),
-    ('Fully warm mean (runs 3–6)', '0.125s'),
-    ('Mean warm gain per object (n=4 jobs)', '0.0714s'),
-    ('Break-even', '~331 objects (~22 cases)'),
-    ('First case cold vs warm baseline', '~25.4s  vs  ~4.38s'),
-]
-for r, (a, b) in enumerate(cs_rows):
-    bg = alt_bg if r % 2 == 0 else WHITE
-    hl = r == 4  # break-even row
-    cell_set(tbl.cell(r+1, 0), a, bg=bg, size=11)
-    cell_set(tbl.cell(r+1, 1), b, bg=bg, size=11,
-             color=TEAL if hl else None, bold=hl)
-
-txbox(s, 'Break-even = 23.61s ÷ 0.0714s/object = ~331 objects = ~22 cases',
-      0.5, 4.5, 9, 0.4, size=12, bold=True, color=TEAL)
-
-txbox(s, 'Note: /tmp is node-local fast storage. Production Triton cache on /scratch (NFS) will be higher.\n'
-         '23.61s is a lower bound for a from-scratch deployment.\n'
-         'After break-even, all subsequent objects run at 1.33×.',
-      0.5, 5.0, 9, 0.8, size=10, color=MUTED)
-
-txbox(s, '~23', 10.2, 2.1, 2.7, 1.0, size=54, bold=True, color=TEAL,
-      align=PP_ALIGN.CENTER)
-txbox(s, 'cases to break even', 9.9, 3.1, 3.3, 0.4, size=11, color=MUTED,
-      align=PP_ALIGN.CENTER)
-txbox(s, '(~331 objects)', 9.9, 3.5, 3.3, 0.4, size=10, color=MUTED,
-      align=PP_ALIGN.CENTER)
-
-
-# ── SLIDE 12: Summary ──────────────────────────────────────────────────────
-s = add_slide()
-set_bg(s, SLIDE_BG)
-slide_header(s, 'Summary of All Optimizations', '12 / 12', NAVY)
-
-tbl = add_table(s, 6, 5, 0.5, 0.85, 12.3, 3.3)
-for c, h in enumerate(['Model', 'Optimization', 'Method', 'Speedup', 'DSC impact']):
-    cell_set(tbl.cell(0, c), h, bold=True, bg=NAVY, color=WHITE, size=11)
-
-summary_rows = [
-    ('VoxTell', 'Sliding window + crop', 'tile_step 0.75, crop-to-nonzero', '2.9× window (CT)', '+0.0006'),
-    ('', 'Embedding cache', 'LRU memory + SHA-256 disk', '29× warm (CT)', 'Identical'),
-    ('', 'INT4 (NF4) text backbone', 'bitsandbytes, ~2 GB vs ~8 GB', '1.5× fwd pass', 'DSC 0.97, −5.5% vox'),
-    ('', 'Numba preprocessing', '@njit(parallel=True)', 'no gain measured', 'Unchanged'),
-    ('nnInteractive', 'torch.compile', 'compile(network, mode=\'reduce-overhead\')', '1.33× / object (n=4)', '+0.0002'),
-]
-for r, row in enumerate(summary_rows):
-    bg = RGBColor(0xFD, 0xF5, 0xE4) if r < 4 else RGBColor(0xE0, 0xF2, 0xEE)
-    for c, val in enumerate(row):
-        sp_color = (AMBER if r < 4 else TEAL) if c == 3 else None
-        cell_set(tbl.cell(r+1, c), val, bg=bg, size=10,
-                 color=sp_color, bold=(c == 3 and bool(val)))
-
-txbox(s, 'VoxTell — precision-matched GPU-vs-GPU benchmark', 0.5, 4.35, 7, 0.32, size=10, bold=True, color=AMBER)
-txbox(s,
-      'H100 MIG 3g.40gb, CVPR validation CT (n=4): 3.27s → 1.28s = 2.7× algorithmic, range 2.6–2.8×, both arms INT4.\n'
-      'INT4 vs FP16 on one CT case: DSC 0.97 agreement, INT4 under-segments by 5.5% — not measured on the full set.',
-      0.5, 4.7, 12.3, 0.5, size=10, color=NAVY)
-
-txbox(s, 'nnInteractive (H100 MIG 3g.40gb, Fir cluster, n=4)', 0.5, 5.25, 8, 0.32, size=10, bold=True, color=TEAL)
-txbox(s,
-      '0.288s → 0.215s per object. Mean speedup 1.33× (n=4: 1.28–1.39×). '
-      'DSC Δ ≤ +0.0004. Speed and accuracy from same job, same config. Break-even ~331 objects (~22 cases).',
-      0.5, 5.6, 12.3, 0.42, size=10, color=NAVY)
-
-txbox(s, 'How these numbers were validated', 0.5, 6.1, 6, 0.32, size=10, bold=True, color=NAVY)
-txbox(s,
-      'Every arm precision-matched (both INT4); GPU, text backbone and sliding-window path warmed before timing; '
-      'embed cache asserted empty before each cold measurement; every figure repeated n≥4 and cited with its range.\n'
-      'Running the same script on two GPUs is what caught the errors: identical phases behaving differently on '
-      'RTX vs H100 exposed an ordering artifact that had inflated an earlier result to 7.1×.',
-      0.5, 6.45, 12.3, 0.9, size=9, color=MUTED)
-
-
-# ── Save ───────────────────────────────────────────────────────────────────
-out = 'slides.pptx'
-prs.save(out)
-print(f'Saved: {out}  ({prs.slides.__len__()} slides)')
+prs.save("slides.pptx")
+print(f"Saved: slides.pptx  ({len(prs.slides.__iter__.__self__._sldIdLst)} slides)")
