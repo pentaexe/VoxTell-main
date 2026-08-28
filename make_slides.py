@@ -292,7 +292,7 @@ txbox(s, 'DSC Change', 10.0, 1.6, 2.6, 0.35, size=10, bold=True, color=TEAL,
       align=PP_ALIGN.CENTER)
 txbox(s, '+0.0003', 10.0, 2.05, 2.6, 0.7, size=32, bold=True, color=TEAL,
       align=PP_ALIGN.CENTER)
-txbox(s, 'ACCURACY MAINTAINED', 10.0, 2.85, 2.6, 0.35, size=9, bold=True,
+txbox(s, 'tile_step: DSC held', 10.0, 2.85, 2.6, 0.35, size=9, bold=True,
       color=TEAL, align=PP_ALIGN.CENTER)
 txbox(s, 'n = 65 objects, 5 CT cases', 10.0, 3.2, 2.6, 0.35, size=9, color=MUTED,
       align=PP_ALIGN.CENTER)
