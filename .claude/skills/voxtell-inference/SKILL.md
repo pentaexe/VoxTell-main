@@ -22,11 +22,28 @@ ssh brianx7@fir.alliancecan.ca
 # Password → type 1 → Duo push on iPhone
 ```
 
-## Conda environments
+## Environments
+
+**Cluster — VoxTell jobs use the venv in /home, NOT the nnInteractive env:**
 ```bash
-source /scratch/brianx7/envs/nninteractive/bin/activate   # cluster (nnInteractive + VoxTell deps)
-conda activate voxtell                                      # local Windows
+source /home/brianx7/envs/voxtell/bin/activate
 ```
+It is a venv, not conda, so there is no `conda activate` step. It has
+`transformers`, `positional_encodings`, `bitsandbytes` and `accelerate` (1.13.0).
+
+`/scratch/brianx7/envs/nninteractive/` is for nnInteractive only. Pointing a
+VoxTell job at it fails partway in with `ModuleNotFoundError: transformers` or
+`positional_encodings` — this cost two jobs on 2026-08-26.
+
+`accelerate` matters specifically: without it, `_load_text_backbone` catches the
+ImportError and silently falls back to FP16, so a run labelled INT4 is not INT4.
+
+**Local Windows:**
+```
+C:\Users\brian\miniconda3\envs\voxtell\python.exe
+```
+Has CUDA torch 2.8.0+cu126 on the RTX 4070 SUPER, plus bitsandbytes and
+accelerate. The base miniconda env is CPU-only torch and will not run benchmarks.
 
 ## Benchmarked latencies
 | Model / Config | Hardware | Per-prompt | Source |
@@ -58,14 +75,27 @@ sbatch <script>.sh
 tail -f /scratch/brianx7/logs/<jobname>_<jobid>.out
 ```
 
-## SLURM requirements (always include)
+## SLURM template (copy this for VoxTell jobs)
 ```bash
-#SBATCH --account=rrg-jma
+#!/bin/bash
+#SBATCH --job-name=vox_<name>
+#SBATCH --output=/scratch/brianx7/logs/vox_<name>_%j.out
 #SBATCH --gpus=nvidia_h100_80gb_hbm3_3g.40gb:1
+#SBATCH --mem=16G                 # 32G for CT volumes
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=2         # jobs are GPU-bound; more looks bad in seff
 #SBATCH --time=1:00:00
-source /scratch/brianx7/envs/nninteractive/bin/activate
+#SBATCH --account=rrg-jma
+
+source /home/brianx7/envs/voxtell/bin/activate
+
 export TORCH_HOME=/scratch/brianx7/torch_home
 export XDG_CACHE_HOME=/scratch/brianx7/cache
+export HF_HOME=/scratch/brianx7/hf_cache   # compute nodes have no internet;
+                                           # without this from_pretrained fails
+
+cd /scratch/brianx7/VoxTell-main
+python -u <script>.py
 ```
 
 ## Dr. Ma's review checklist
