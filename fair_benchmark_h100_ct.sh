@@ -2,9 +2,9 @@
 #SBATCH --job-name=vox_fair_ct
 #SBATCH --output=/scratch/brianx7/logs/vox_fair_ct_%j.out
 #SBATCH --gpus=nvidia_h100_80gb_hbm3_3g.40gb:1
-#SBATCH --mem=64G
+#SBATCH --mem=32G
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=2
 #SBATCH --time=1:00:00
 #SBATCH --account=rrg-jma
 
