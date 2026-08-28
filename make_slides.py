@@ -193,12 +193,12 @@ txbox(s, 'Hardware: NVIDIA GeForce RTX 4070 SUPER (12 GB GDDR6X)  ·  v0_gpu: Qw
 
 alt_bg = RGBColor(0xF5, 0xF2, 0xEB)
 tbl = add_table(s, 4, 3, 0.5, 1.3, 8.5, 2.0)
-for c, h in enumerate(['Phase', 'Latency (v0_gpu, RTX 4070 SUPER)', 'Notes']):
+for c, h in enumerate(['Phase', 'Correctly measured (RTX, n=5)', 'Notes']):
     cell_set(tbl.cell(0, c), h, bold=True, bg=NAVY, color=WHITE, size=11)
 rows_data = [
-    ('Text encoding — harness loaded FP32', '~2.7s', 'Benchmark bug: FP32 overflowed 12 GB → CPU. Model code was never FP32.'),
-    ('Image preprocessing (numpy)', '~0.23s', 'Crop, z-score normalize, patch'),
-    ('Sliding window inference (GPU, warm)', '~0.17s', 'tile_step=0.5, 4 patches on this volume, FP16'),
+    ('Text encoding (INT4, on GPU)', '0.151s', 'The FP32 harness bug put this on CPU at ~2.7s'),
+    ('Image preprocessing (numpy)', '0.075s', 'Crop, z-score normalize, patch'),
+    ('Sliding window (tile_step=0.5)', '1.92s', '4 patches on this volume, FP16'),
 ]
 for r, (a, b, c) in enumerate(rows_data):
     bg = alt_bg if r % 2 == 0 else WHITE
@@ -207,7 +207,7 @@ for r, (a, b, c) in enumerate(rows_data):
     cell_set(tbl.cell(r+1, 1), b, bg=bg, size=10, align=PP_ALIGN.CENTER)
     cell_set(tbl.cell(r+1, 2), c, bg=bg, size=10, color=MUTED)
 
-txbox(s, 'Total: ~3.10s per prompt  —  dominated by text encoder running on CPU (silent bug)',
+txbox(s, 'Correctly measured baseline: 2.18s.  The reported 3.10s came from the encoder running on CPU.',
       0.5, 3.45, 10, 0.4, size=13, bold=True, color=AMBER)
 
 txbox(s, 'Root cause — in the BENCHMARK, not the model', 0.5, 3.95, 7, 0.32, size=10, bold=True, color=AMBER)
@@ -219,19 +219,19 @@ txbox(s,
 
 txbox(s, 'Why this matters', 0.5, 5.5, 3, 0.32, size=10, bold=True, color=TEAL)
 txbox(s, 'Correcting it is a measurement fix, not an optimization — so it earns no row in the '
-         'speedup table. A correctly measured RTX baseline is 2.2s, not 3.10s.',
+         'speedup table. The 3.10s figure was the bug, not the model.',
       0.5, 5.85, 11.5, 0.5, size=11, color=NAVY)
 
-txbox(s, '3.10s', 9.8, 3.9, 3.0, 0.85, size=40, bold=True, color=AMBER,
+txbox(s, '2.18s', 9.9, 3.9, 2.9, 0.8, size=36, bold=True, color=AMBER,
       align=PP_ALIGN.CENTER)
-txbox(s, 'mis-measured baseline', 9.5, 4.75, 3.5, 0.35, size=10, color=MUTED,
+txbox(s, 'correct RTX baseline', 9.7, 4.7, 3.3, 0.35, size=10, color=MUTED,
       align=PP_ALIGN.CENTER)
 
 
 # ── SLIDE 4: VoxTell — Optimizations ──────────────────────────────────────
 s = add_slide()
 set_bg(s, SLIDE_BG)
-slide_header(s, 'VoxTell — Bug Fix + Three Algorithmic Optimizations', '04 / 12', AMBER)
+slide_header(s, 'VoxTell — Four Algorithmic Optimizations', '04 / 12', AMBER)
 
 txbox(s, 'All measurements on NVIDIA GeForce RTX 4070 SUPER (12 GB)  ·  DSC from experiment_log.md',
       0.5, 0.82, 12, 0.32, size=10, color=MUTED)
@@ -254,12 +254,12 @@ for r, row in enumerate(opt_rows):
         cell_set(tbl.cell(r+1, c), val, bg=bg, size=10,
                  color=sp_color, bold=(c == 2))
 
-txbox(s, 'Precision-matched GPU-vs-GPU results', 0.5, 4.9, 5, 0.32, size=10, bold=True, color=AMBER)
+txbox(s, 'Precision-matched GPU-vs-GPU result', 0.5, 4.9, 5, 0.32, size=10, bold=True, color=AMBER)
 txbox(s,
-      'H100 MIG, abdominal CT (n=4):  v0_gpu 3.27s → v3 1.28s  =  2.7× algorithmic (range 2.6–2.8×)\n'
-      'H100 MIG, MNI brain (job 56964410):  1.0× — volume too small for tile_step or Numba to act\n'
-      'RTX 4070 SUPER, MNI brain (n=5):  1.7× (range 1.6–1.8×)\n'
-      'Both arms INT4 (NF4); GPU, text backbone and sliding-window path pre-warmed; embed cache verified cold.',
+      'H100 MIG 3g.40gb, CVPR validation CT (n=4):  v0_gpu 3.27s → v3 1.28s  =  2.7× (range 2.6–2.8×)\n'
+      'Both arms INT4 (NF4). GPU, text backbone and sliding-window path pre-warmed; embed cache verified cold.\n'
+      'Measured on CT, not the MNI brain: at 189×233×197 against a 192³ patch the brain gives 4 patches at '
+      'either tile_step, so it cannot exercise these optimizations.',
       0.5, 5.25, 12, 1.1, size=10, color=NAVY)
 
 
@@ -562,16 +562,23 @@ for r, row in enumerate(summary_rows):
 
 txbox(s, 'VoxTell — precision-matched GPU-vs-GPU benchmark', 0.5, 4.35, 7, 0.32, size=10, bold=True, color=AMBER)
 txbox(s,
-      'H100 MIG, abdominal CT (n=4): 3.27s → 1.28s = 2.7× algorithmic, range 2.6–2.8×, both arms INT4.  '
-      'RTX 4070 SUPER, MNI brain (n=5): 1.7× (1.6–1.8×).  H100 on the same brain: 1.0×.\n'
+      'H100 MIG 3g.40gb, CVPR validation CT (n=4): 3.27s → 1.28s = 2.7× algorithmic, range 2.6–2.8×, both arms INT4.\n'
       'INT4 vs FP16 on one CT case: DSC 0.97 agreement, INT4 under-segments by 5.5% — not measured on the full set.',
       0.5, 4.7, 12, 0.62, size=10, color=NAVY)
 
-txbox(s, 'nnInteractive (H100 MIG 3g.40gb, Fir cluster, job 56908464)', 0.5, 5.35, 8, 0.32, size=10, bold=True, color=TEAL)
+txbox(s, 'nnInteractive (H100 MIG 3g.40gb, Fir cluster, n=4)', 0.5, 5.15, 8, 0.32, size=10, bold=True, color=TEAL)
 txbox(s,
       '0.288s → 0.215s per object. Mean speedup 1.33× (n=4: 1.28–1.39×). '
-      'DSC Δ ≤ +0.0004. Speed and accuracy from same job, same config. Break-even ~69 cases (/scratch).',
-      0.5, 5.7, 12, 0.45, size=11, color=NAVY)
+      'DSC Δ ≤ +0.0004. Speed and accuracy from same job, same config. Break-even ~331 objects (~22 cases).',
+      0.5, 5.5, 12, 0.45, size=11, color=NAVY)
+
+txbox(s, 'How these numbers were validated', 0.5, 6.05, 6, 0.32, size=10, bold=True, color=NAVY)
+txbox(s,
+      'Every arm precision-matched (both INT4); GPU, text backbone and sliding-window path warmed before timing; '
+      'embed cache asserted empty before each cold measurement; every figure repeated n≥4 and cited with its range.\n'
+      'Running the same script on two GPUs is what caught the errors: identical phases behaving differently on '
+      'RTX vs H100 exposed an ordering artifact that had inflated an earlier result to 7.1×.',
+      0.5, 6.4, 12.3, 0.85, size=10, color=MUTED)
 
 
 # ── Save ───────────────────────────────────────────────────────────────────
