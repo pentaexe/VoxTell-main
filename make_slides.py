@@ -159,7 +159,8 @@ txbox(s,
       'Dice Similarity Coefficient (DSC) = 2|A∩B| / (|A|+|B|)\n'
       '  0 = no overlap     1 = perfect\n'
       '  > 0.70 = clinically acceptable\n'
-      '  Our results: ~0.79',
+      '  nnInteractive: 0.779  (881 CT cases)\n'
+      '  VoxTell: 0.809  (5 CT cases)',
       0.5, 2.9, 5.5, 1.4, size=12, color=NAVY)
 
 txbox(s, 'Why Speed Matters', 0.5, 4.5, 5.5, 0.35, size=10, bold=True, color=AMBER)
@@ -268,17 +269,17 @@ s = add_slide()
 set_bg(s, SLIDE_BG)
 slide_header(s, 'VoxTell — Accuracy Verification', '05 / 12', AMBER)
 
-txbox(s, 'All optimizations preserve segmentation quality', 0.5, 0.9, 9, 0.4,
+txbox(s, 'Speed optimizations preserve DSC; INT4 quantization changes the output', 0.5, 0.9, 9.2, 0.4,
       size=13, color=MUTED)
 
 tbl = add_table(s, 5, 3, 0.5, 1.4, 9, 2.8)
 for c, h in enumerate(['Setting', 'Mean DSC', 'vs Baseline']):
     cell_set(tbl.cell(0, c), h, bold=True, bg=NAVY, color=WHITE, size=12)
 acc_rows = [
-    ('Baseline v0_gpu', '0.7794', '—'),
-    ('+ FP16 GPU placement', '0.7795', '< 0.001'),
-    ('+ Sliding window (0.75)', '0.7800', '+0.0006'),
-    ('+ Embedding cache', '0.7800', 'Identical'),
+    ('v0_gpu  (tile_step=0.5)', '0.8090', '—'),
+    ('v3  (tile_step=0.75)', '0.8093', '+0.0003'),
+    ('INT4 vs FP16 backbone', 'agreement 0.9716', '−5.5% voxels'),
+    ('Embedding cache', 'bit-identical', 'returns stored tensor'),
 ]
 for r, row in enumerate(acc_rows):
     bg = alt_bg if r % 2 == 0 else WHITE
@@ -289,14 +290,14 @@ for r, row in enumerate(acc_rows):
 rect(s, 9.8, 1.4, 3.0, 2.8, RGBColor(0xE8, 0xF4, 0xF0))
 txbox(s, 'DSC Change', 10.0, 1.6, 2.6, 0.35, size=10, bold=True, color=TEAL,
       align=PP_ALIGN.CENTER)
-txbox(s, '< 0.001', 10.0, 2.05, 2.6, 0.7, size=36, bold=True, color=TEAL,
+txbox(s, '+0.0003', 10.0, 2.05, 2.6, 0.7, size=32, bold=True, color=TEAL,
       align=PP_ALIGN.CENTER)
 txbox(s, 'ACCURACY MAINTAINED', 10.0, 2.85, 2.6, 0.35, size=9, bold=True,
       color=TEAL, align=PP_ALIGN.CENTER)
-txbox(s, 'n = 294 objects', 10.0, 3.2, 2.6, 0.35, size=10, color=MUTED,
+txbox(s, 'n = 65 objects, 5 CT cases', 10.0, 3.2, 2.6, 0.35, size=9, color=MUTED,
       align=PP_ALIGN.CENTER)
 
-txbox(s, 'No pass/fail threshold applied — the measured delta and its sample size are reported as-is.',
+txbox(s, 'VoxTell DSC from accuracy_results.csv (5 AMOS CT cases, 65 objects). No pass/fail threshold applied. INT4 agreement is n=1 and measures output change, not accuracy vs ground truth.',
       0.5, 4.5, 12, 0.5, size=11, color=MUTED)
 
 
@@ -305,7 +306,7 @@ s = add_slide()
 set_bg(s, SLIDE_BG)
 slide_header(s, 'nnInteractive — What It Is', '06 / 12', TEAL)
 
-txbox(s, 'CVPR 2025 challenge baseline model', 0.5, 0.9, 9, 0.35, size=12, color=MUTED)
+txbox(s, 'CVPR 2025 challenge baseline model', 0.5, 0.9, 6.4, 0.35, size=12, color=MUTED)
 
 for i, (title, body, col) in enumerate([
     ('Bbox prompting', 'User provides a 3-D bounding box around the target object. '
@@ -564,21 +565,21 @@ txbox(s, 'VoxTell — precision-matched GPU-vs-GPU benchmark', 0.5, 4.35, 7, 0.3
 txbox(s,
       'H100 MIG 3g.40gb, CVPR validation CT (n=4): 3.27s → 1.28s = 2.7× algorithmic, range 2.6–2.8×, both arms INT4.\n'
       'INT4 vs FP16 on one CT case: DSC 0.97 agreement, INT4 under-segments by 5.5% — not measured on the full set.',
-      0.5, 4.7, 12, 0.62, size=10, color=NAVY)
+      0.5, 4.7, 12.3, 0.5, size=10, color=NAVY)
 
-txbox(s, 'nnInteractive (H100 MIG 3g.40gb, Fir cluster, n=4)', 0.5, 5.15, 8, 0.32, size=10, bold=True, color=TEAL)
+txbox(s, 'nnInteractive (H100 MIG 3g.40gb, Fir cluster, n=4)', 0.5, 5.25, 8, 0.32, size=10, bold=True, color=TEAL)
 txbox(s,
       '0.288s → 0.215s per object. Mean speedup 1.33× (n=4: 1.28–1.39×). '
       'DSC Δ ≤ +0.0004. Speed and accuracy from same job, same config. Break-even ~331 objects (~22 cases).',
-      0.5, 5.5, 12, 0.45, size=11, color=NAVY)
+      0.5, 5.6, 12.3, 0.42, size=10, color=NAVY)
 
-txbox(s, 'How these numbers were validated', 0.5, 6.05, 6, 0.32, size=10, bold=True, color=NAVY)
+txbox(s, 'How these numbers were validated', 0.5, 6.1, 6, 0.32, size=10, bold=True, color=NAVY)
 txbox(s,
       'Every arm precision-matched (both INT4); GPU, text backbone and sliding-window path warmed before timing; '
       'embed cache asserted empty before each cold measurement; every figure repeated n≥4 and cited with its range.\n'
       'Running the same script on two GPUs is what caught the errors: identical phases behaving differently on '
       'RTX vs H100 exposed an ordering artifact that had inflated an earlier result to 7.1×.',
-      0.5, 6.4, 12.3, 0.85, size=10, color=MUTED)
+      0.5, 6.45, 12.3, 0.9, size=9, color=MUTED)
 
 
 # ── Save ───────────────────────────────────────────────────────────────────
