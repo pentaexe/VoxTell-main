@@ -1,7 +1,17 @@
 # ComputeCanada Workflow — Brian Xiao
 **Lab:** Peter Munk Cardiac Centre AI Team (Dr. Jun Ma)  
 **Username:** brianx7  
-**Account:** axc-572-ac (RRG #5772 — Foundation Models for Medical Image Segmentation)  
+**Account:** `rrg-jma` — use this in `--account=`.
+
+> `axc-572-ac` and `rrg-jma` are the **same allocation**, not two options. `axc-572-ac`
+> is the RAPI that CCDB displays; `rrg-jma` is the group name, and that is the form
+> SLURM expects. Every submitted `.sh` in this repo uses `rrg-jma`.
+> Both refer to RRG #5772, Foundation Models for Medical Image Segmentation.
+>
+> Do **not** use `def-jma-ab` (RAPI `axc-572-ab`). That is the default allocation with
+> no RAC — low priority, and it does not draw on the lab's 10 RGU-years.
+
+
 **Clusters:** Trillium (short jobs <1 day) · Fir (long jobs >1 day, lab has 10 RGU-years allocation)
 
 ---
@@ -87,7 +97,7 @@ The lab has **10 RGU-years** exclusive allocation on **Fir**. Use it.
 ### 2.2 Example batch script (`train.sh`)
 ```bash
 #!/bin/bash
-#SBATCH --account=axc-572-ac
+#SBATCH --account=rrg-jma
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=6
 #SBATCH --mem=140G
@@ -112,7 +122,7 @@ sbatch train.sh
 ```bash
 salloc --time=1:0:0 --mem=32G --ntasks=1 \
        --gpus=nvidia_h100_80gb_hbm3_2g.20gb:1 \
-       --account=axc-572-ac
+       --account=rrg-jma
 ```
 
 **CRITICAL: Never run jobs >1 minute on the login node.**
@@ -167,7 +177,7 @@ Following the lab's standard recipe:
 # Request interactive H100 40G session
 salloc --time=2:0:0 --mem=140G --ntasks=6 \
        --gpus=nvidia_h100_80gb_hbm3_3g.40gb:1 \
-       --account=axc-572-ac
+       --account=rrg-jma
 
 # In another terminal: monitor GPU
 srun --jobid <JOBID> --pty watch -n 10 nvidia-smi
@@ -220,7 +230,7 @@ wget -O dataset.zip "https://download_link_here"
 ```bash
 # Batch script for interactive VS Code session
 #!/bin/bash
-#SBATCH --account=axc-572-ac
+#SBATCH --account=rrg-jma
 #SBATCH --gpus=nvidia_h100_80gb_hbm3_3g.40gb:1
 #SBATCH --mem=140G
 #SBATCH --ntasks=6
