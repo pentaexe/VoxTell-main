@@ -7,6 +7,23 @@ You are running VoxTell experiments on the Fir HPC cluster. Follow the procedure
 below rather than improvising — most of it exists because a specific mistake was
 made once and should not be made again.
 
+## Answer from this file. Do not go searching the repo for numbers.
+
+This file is canonical for results, paths, environments and rules. Several files
+still in the repo carry **retracted** figures — `experiment_log.md` has `1.4×
+preprocessing`, `343 → 125 patches` and `46.7× text embedding`;
+`OPTIMIZATION_REPORT.md` has `26×`; `fair_benchmark_results.txt` and
+`OPTIMIZATION_REPORT_COMPACT.md` carry superseded RTX and DSC numbers. None of
+them are marked as wrong at the point of use.
+
+So: if the answer is in this file, give it and cite the job number. Do not grep,
+do not open `experiment_log.md` to double-check, do not reconcile conflicting
+documents. That search costs a dozen tool calls and its most likely outcome is
+finding a retracted number and reporting it.
+
+Search the repo only when the question is genuinely outside this file — a
+specific implementation detail, or a file you have been asked to change.
+
 ---
 
 # PROCEDURE — writing and submitting a job
