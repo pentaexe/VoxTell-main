@@ -98,8 +98,13 @@ cd /scratch/brianx7/VoxTell-main
 python -u <script>.py
 ```
 
-## Dr. Ma's review checklist
-- Report CPU efficiency (`seff <jobid>`) for every submitted job
-- GPU comparison must use the same checkpoint and fold (no fold=0 vs fold='all' mixing)
-- DSC accuracy must be verified for any speed optimization
-- Always use `use_fold='all'` for nnInteractive; never fold=0
+## Submission standards
+Any result leaving this project has to meet these, so build them in from the start
+rather than retrofitting:
+- Report CPU efficiency (`seff <jobid>`) for every submitted job; request only the
+  cores actually used, since idle allocation lowers the whole group's priority
+- Both sides of a comparison use the same checkpoint, fold and precision
+- No CPU baselines; a GPU speedup is measured against a GPU baseline
+- Any speed optimization needs a DSC number showing accuracy held
+- Explain regressions rather than omitting them
+- Always `use_fold='all'` for nnInteractive; never fold=0
