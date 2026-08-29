@@ -1,0 +1,38 @@
+{
+  "name": "voxtell-seg",
+  "displayName": "VoxTell & nnInteractive Segmentation",
+  "version": "0.1.0",
+  "description": "Run VoxTell text-prompted and nnInteractive bbox-prompted 3-D medical image segmentation as callable tools, with request validation that refuses anatomically impossible prompts before any compute is spent.",
+  "author": {
+    "name": "Brian Xiao"
+  },
+  "repository": "https://github.com/pentaexe/VoxTell-main",
+  "license": "Apache-2.0",
+  "keywords": [
+    "medical-imaging",
+    "segmentation",
+    "voxtell",
+    "nninteractive",
+    "mcp"
+  ],
+  "userConfig": {
+    "voxtell_python": {
+      "type": "string",
+      "title": "Python interpreter with VoxTell installed",
+      "description": "Full path to a Python that can import voxtell and torch with CUDA. On this workstation: C:\\Users\\brian\\miniconda3\\envs\\voxtell\\python.exe",
+      "required": true
+    },
+    "voxtell_model_dir": {
+      "type": "directory",
+      "title": "VoxTell checkpoint directory",
+      "description": "Directory containing plans.json and fold_0/checkpoint_final.pth",
+      "required": true
+    },
+    "nninteractive_weights": {
+      "type": "directory",
+      "title": "nnInteractive weights directory",
+      "description": "Directory containing the nnInteractive_v1.0 checkpoint (must include fold_all)",
+      "required": false
+    }
+  }
+}

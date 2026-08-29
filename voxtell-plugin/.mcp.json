@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "voxtell-seg": {
+      "command": "${user_config.voxtell_python}",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/mcp_server/server.py"
+      ],
+      "env": {
+        "VOXTELL_MODEL_DIR": "${user_config.voxtell_model_dir}",
+        "NNINTERACTIVE_WEIGHTS": "${user_config.nninteractive_weights}",
+        "VOXTELL_OUTPUT_DIR": "${CLAUDE_PLUGIN_DATA}/segmentations"
+      }
+    }
+  }
+}

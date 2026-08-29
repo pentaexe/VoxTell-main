@@ -1,0 +1,111 @@
+# voxtell-seg — a Claude Code plugin
+
+Makes VoxTell and nnInteractive directly callable as segmentation tools, and
+refuses requests that are anatomically impossible before spending any compute.
+
+## Why this exists
+
+VoxTell is text-prompted, so it accepts any string. Hand it an abdominal CT and
+ask for a brain tumour and it will run, and return a mask. The mask is of
+nothing, but nothing in the pipeline says so — you get a plausible-looking
+result and no warning.
+
+That is the gap this plugin closes. `check_request` inspects the image and the
+prompt independently and reports whether they are compatible; `voxtell_segment`
+runs that check first and returns an error instead of a meaningless mask.
+
+```
+Request: REFUSED
+
+  The prompt asks for a structure in the brain (brain, brain tumor), but the
+  image is a CT study of the thorax. That structure is not in this field of
+  view, so any mask returned would be meaningless.
+
+Image
+  modality : CT
+  region   : thorax
+  shape    : (512, 512, 406)   spacing: (0.82, 0.82, 1.25)
+  - intensities reach -2048, consistent with Hounsfield units (air ~ -1000)
+  - 25.0% of voxels below -700 HU (air)
+```
+
+## What each piece does
+
+This plugin bundles all three extension mechanisms, which is the clearest way to
+see how they differ:
+
+| Mechanism | What it is | Here |
+|---|---|---|
+| **Skill** | Instructions loaded into the model's context. Shapes *how it works* — workflow, protocol, standards. Advisory. | `skills/voxtell-inference`, `skills/nninteractive-inference`: cluster procedure, measurement rules, submission standards |
+| **MCP server** | A process exposing *callable tools* over JSON-RPC. Real code with real return values. Deterministic — it can refuse. | `mcp_server/server.py`: four tools, including the validation gate |
+| **Plugin** | A package bundling skills, MCP servers, commands and hooks into one installable unit | this directory |
+
+The distinction that matters: a skill can *tell* the model that a brain prompt
+on an abdominal CT is wrong. Only a tool can *make the call fail*. One is
+guidance the model may or may not follow; the other is a gate it cannot walk
+past.
+
+Because MCP is an open protocol, the same server works in any MCP client, not
+only Claude Code.
+
+## Tools
+
+| Tool | Purpose |
+|---|---|
+| `check_request` | Validate an image/prompt pair. No compute. Returns inferred modality, region, and the reasoning. |
+| `voxtell_segment` | Text-prompted segmentation. Validates first; refuses on mismatch unless `force=true`. |
+| `nninteractive_segment` | Bounding-box prompted segmentation. No text, so no anatomy check needed. |
+| `list_models` | What is available and what each model can and cannot do. |
+
+## How validation works
+
+Deliberately simple and inspectable — intensity statistics and geometry, not a
+classifier. A validator nobody can audit is a validator nobody should trust.
+
+- **Modality** from the intensity distribution. CT is calibrated in Hounsfield
+  units, so air sits near -1000; MR intensities are arbitrary and rarely
+  negative.
+- **Region** from air fraction and field of view. A head has almost no internal
+  air; a torso has lungs or bowel gas. Thresholds are stated in `validate.py`.
+- **Prompt** against an anatomy vocabulary mapping terms to body regions.
+
+It refuses only on a clear mismatch. Unknown on either side proceeds with a
+note — a validator that blocks whatever it cannot classify is useless. Adjacent
+regions (thorax/abdomen, abdomen/pelvis) pass, since they routinely share a
+field of view.
+
+**Known limits.** The region heuristic is thresholds on one CT convention. It
+reads a FLARE abdominal CT with lung in frame as `thorax`, which the adjacency
+rule then lets through — correct outcome, imprecise label. It has not been
+tested on MR beyond the modality check, and the vocabulary covers common
+structures only.
+
+## Install
+
+```bash
+/plugin install voxtell-seg
+```
+
+Or point Claude Code at this directory. On first load it prompts for:
+
+- `voxtell_python` — a Python that can import `voxtell` and CUDA torch
+- `voxtell_model_dir` — checkpoint directory with `plans.json` and `fold_0/`
+- `nninteractive_weights` — optional; needs `fold_all`
+
+## Testing the server directly
+
+It speaks JSON-RPC over stdio with no SDK dependency, so you can drive it by hand:
+
+```bash
+printf '%s\n' \
+ '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
+ '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+ | python mcp_server/server.py
+```
+
+## Status
+
+The validation gate is tested and working on FLARE abdominal CT. Inference paths
+call the same `VoxTellPredictor` and `nnInteractiveInferenceSession` used by the
+benchmarks in the parent repository, but have not yet been run end to end
+through the MCP layer on a GPU.
