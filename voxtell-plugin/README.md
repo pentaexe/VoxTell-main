@@ -105,7 +105,25 @@ printf '%s\n' \
 
 ## Status
 
-The validation gate is tested and working on FLARE abdominal CT. Inference paths
-call the same `VoxTellPredictor` and `nnInteractiveInferenceSession` used by the
-benchmarks in the parent repository, but have not yet been run end to end
-through the MCP layer on a GPU.
+Both branches verified end to end through the MCP layer on an RTX 4070 SUPER.
+
+**Allowed request** — MNI T1 with prompt `"brain"`:
+
+```
+Segmented 'brain'
+  device      : cuda:0
+  image       : mni_icbm152_t1_tal_nlin_sym_09a.nii.gz  (197, 233, 189)
+  validation  : Prompt targets the brain, and the image looks like a brain study.
+  voxels      : 1,812,398
+  saved       : ...\mni_icbm152_t1_tal_nlin_sym_09a.nii__brain.npz
+```
+
+That voxel count sits alongside the 1,828,296 measured for the same prompt in
+the INT4 comparison, so the mask is real rather than an artifact of the plumbing.
+
+**Refused request** — FLARE abdominal CT with prompt `"brain tumor"`: returns
+`isError: true`, and no model is loaded and no GPU touched. The refusal happens
+before any compute.
+
+`nninteractive_segment` has not been exercised — it needs the weights directory,
+which lives on the cluster.
