@@ -92,9 +92,15 @@ Or point Claude Code at this directory. On first load it prompts for:
 - `voxtell_model_dir` — checkpoint directory with `plans.json` and `fold_0/`
 - `nninteractive_weights` — optional; needs `fold_all`
 
-## Testing the server directly
+## Two transports: Claude Code and ChatGPT
 
-It speaks JSON-RPC over stdio with no SDK dependency, so you can drive it by hand:
+MCP's protocol semantics are identical on every transport — a transport only
+decides how messages are framed and delivered. So the same four tools are
+reachable two ways, and the routing code is written once.
+
+**stdio** (default) — newline-delimited JSON-RPC over the standard streams of a
+subprocess the client launches. This is what Claude Code and Claude Desktop use,
+and it is what `.mcp.json` configures.
 
 ```bash
 printf '%s\n' \
@@ -102,6 +108,25 @@ printf '%s\n' \
  '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
  | python mcp_server/server.py
 ```
+
+**Streamable HTTP** — each message is an HTTP POST to one endpoint. A hosted
+client such as ChatGPT cannot launch a subprocess on your machine, so stdio is
+unavailable to it and this is the binding it needs.
+
+```bash
+python mcp_server/server.py --http --port 8765
+
+curl -X POST http://127.0.0.1:8765/mcp -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+```
+
+`GET /mcp` returns a small status document, which is handy for confirming the
+server is up.
+
+> **Before exposing this.** It binds to `127.0.0.1` deliberately. Reaching it
+> from a hosted client needs a tunnel (cloudflared, ngrok) *and* an auth layer in
+> front. The server reads arbitrary local file paths and starts GPU work, and it
+> has no authentication of its own. Do not put it on a public URL as-is.
 
 ## Status
 

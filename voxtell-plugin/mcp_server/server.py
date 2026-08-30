@@ -292,9 +292,53 @@ HANDLERS = {
 }
 
 
-# ── Main loop ─────────────────────────────────────────────────────────────────
+# ── Dispatch, shared by both transports ───────────────────────────────────────
+# MCP's protocol semantics are identical on every transport; a transport only
+# decides how messages are framed and delivered. So the routing below is written
+# once and both stdio and HTTP call into it.
 
-def main():
+def handle(req: dict):
+    """Return a response dict, or None for a notification (which gets no reply)."""
+    method, rid = req.get("method"), req.get("id")
+
+    def ok(result):
+        return {"jsonrpc": "2.0", "id": rid, "result": result}
+
+    if method == "initialize":
+        return ok({
+            "protocolVersion": PROTOCOL_VERSION,
+            "capabilities": {"tools": {}},
+            "serverInfo": {"name": "voxtell-seg", "version": "0.1.0"},
+        })
+    if method == "notifications/initialized":
+        return None
+    if method == "tools/list":
+        return ok({"tools": TOOLS})
+    if method == "ping":
+        return ok({})
+    if method == "tools/call":
+        params = req.get("params", {})
+        name = params.get("name")
+        handler = HANDLERS.get(name)
+        if handler is None:
+            return {"jsonrpc": "2.0", "id": rid,
+                    "error": {"code": -32601, "message": f"unknown tool: {name}"}}
+        try:
+            return ok(handler(params.get("arguments", {})))
+        except Exception as e:
+            return ok(text_result(
+                f"{type(e).__name__}: {e}\n\n{traceback.format_exc(limit=3)}", is_error=True))
+    if rid is not None:
+        return {"jsonrpc": "2.0", "id": rid,
+                "error": {"code": -32601, "message": f"unknown method: {method}"}}
+    return None
+
+
+# ── Transport: stdio ──────────────────────────────────────────────────────────
+# Newline-delimited JSON-RPC over the standard streams of a client-launched
+# subprocess. This is what Claude Code and Claude Desktop use.
+
+def serve_stdio():
     for line in sys.stdin:
         line = line.strip()
         if not line:
@@ -303,35 +347,94 @@ def main():
             req = json.loads(line)
         except json.JSONDecodeError:
             continue
+        resp = handle(req)
+        if resp is not None:
+            send(resp)
 
-        method, rid = req.get("method"), req.get("id")
 
-        if method == "initialize":
-            reply(rid, {
-                "protocolVersion": PROTOCOL_VERSION,
-                "capabilities": {"tools": {}},
-                "serverInfo": {"name": "voxtell-seg", "version": "0.1.0"},
-            })
-        elif method == "notifications/initialized":
-            pass                                   # notification: no reply
-        elif method == "tools/list":
-            reply(rid, {"tools": TOOLS})
-        elif method == "tools/call":
-            params = req.get("params", {})
-            name = params.get("name")
-            handler = HANDLERS.get(name)
-            if handler is None:
-                error(rid, -32601, f"unknown tool: {name}")
-                continue
+# ── Transport: Streamable HTTP ────────────────────────────────────────────────
+# Each message is an HTTP POST to a single endpoint. A web client such as
+# ChatGPT cannot launch a subprocess on your machine, so stdio is unavailable to
+# it and this is the binding it needs.
+
+def serve_http(host: str, port: int):
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class Handler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def log_message(self, fmt, *args):        # keep stdout clean
+            sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args))
+
+        def _send(self, code: int, body: bytes = b"", ctype="application/json"):
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            if body:
+                self.wfile.write(body)
+
+        def do_GET(self):
+            # Convenience for humans checking the server is up. The spec's GET
+            # is for opening an SSE stream, which these tools do not need.
+            if self.path.rstrip("/") in ("", "/mcp", "/health"):
+                self._send(200, json.dumps({
+                    "server": "voxtell-seg",
+                    "transport": "streamable-http",
+                    "endpoint": "/mcp",
+                    "tools": [t["name"] for t in TOOLS],
+                }).encode())
+            else:
+                self._send(404, b'{"error":"not found"}')
+
+        def do_POST(self):
+            if self.path.rstrip("/") not in ("", "/mcp"):
+                self._send(404, b'{"error":"not found"}')
+                return
+            n = int(self.headers.get("Content-Length", 0))
             try:
-                reply(rid, handler(params.get("arguments", {})))
-            except Exception as e:
-                reply(rid, text_result(
-                    f"{type(e).__name__}: {e}\n\n{traceback.format_exc(limit=3)}", is_error=True))
-        elif method == "ping":
-            reply(rid, {})
-        elif rid is not None:
-            error(rid, -32601, f"unknown method: {method}")
+                req = json.loads(self.rfile.read(n) or b"{}")
+            except json.JSONDecodeError:
+                self._send(400, json.dumps({
+                    "jsonrpc": "2.0", "id": None,
+                    "error": {"code": -32700, "message": "parse error"}}).encode())
+                return
+
+            # A batch is a JSON array; a single message is an object.
+            if isinstance(req, list):
+                out = [r for r in (handle(m) for m in req) if r is not None]
+                self._send(200 if out else 202, json.dumps(out).encode() if out else b"")
+                return
+
+            resp = handle(req)
+            if resp is None:
+                self._send(202)                    # notification: accepted, no body
+            else:
+                self._send(200, json.dumps(resp).encode())
+
+    srv = ThreadingHTTPServer((host, port), Handler)
+    sys.stderr.write(
+        f"voxtell-seg MCP server on http://{host}:{port}/mcp\n"
+        f"  tools: {', '.join(t['name'] for t in TOOLS)}\n"
+        f"  bound to {host}; to reach it from a hosted client you need a tunnel\n"
+        f"  (e.g. cloudflared / ngrok) and an auth layer in front. Do not expose\n"
+        f"  this directly: it reads local files and runs GPU jobs, with no auth.\n"
+    )
+    srv.serve_forever()
+
+
+def main():
+    args = sys.argv[1:]
+    if "--http" in args:
+        host = "127.0.0.1"
+        port = 8765
+        if "--port" in args:
+            port = int(args[args.index("--port") + 1])
+        if "--host" in args:
+            host = args[args.index("--host") + 1]
+        serve_http(host, port)
+    else:
+        serve_stdio()
 
 
 if __name__ == "__main__":
