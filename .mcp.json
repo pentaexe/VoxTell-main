@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "voxtell-seg": {
+      "command": "C:\\Users\\brian\\miniconda3\\envs\\voxtell\\python.exe",
+      "args": [
+        "c:\\Users\\brian\\OneDrive\\Desktop\\Code\\VoxTell-main\\voxtell-plugin\\mcp_server\\server.py"
+      ],
+      "env": {
+        "VOXTELL_MODEL_DIR": "c:\\Users\\brian\\OneDrive\\Desktop\\Code\\VoxTell-main\\models\\voxtell_v1.1",
+        "NNINTERACTIVE_WEIGHTS": "",
+        "VOXTELL_OUTPUT_DIR": "c:\\Users\\brian\\OneDrive\\Desktop\\Code\\VoxTell-main\\mcp_segmentations"
+      }
+    }
+  }
+}
