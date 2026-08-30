@@ -19,20 +19,20 @@
     "voxtell_python": {
       "type": "string",
       "title": "Python interpreter with VoxTell installed",
-      "description": "Full path to a Python that can import voxtell and torch with CUDA. On this workstation: C:\\Users\\brian\\miniconda3\\envs\\voxtell\\python.exe",
-      "required": true
+      "description": "Full path to a Python that can import voxtell and torch with CUDA.",
+      "default": "C:\\Users\\brian\\miniconda3\\envs\\voxtell\\python.exe"
     },
     "voxtell_model_dir": {
-      "type": "directory",
+      "type": "string",
       "title": "VoxTell checkpoint directory",
       "description": "Directory containing plans.json and fold_0/checkpoint_final.pth",
-      "required": true
+      "default": "C:\\Users\\brian\\OneDrive\\Desktop\\Code\\VoxTell-main\\models\\voxtell_v1.1"
     },
     "nninteractive_weights": {
-      "type": "directory",
+      "type": "string",
       "title": "nnInteractive weights directory",
-      "description": "Directory containing the nnInteractive_v1.0 checkpoint (must include fold_all)",
-      "required": false
+      "description": "Directory containing the nnInteractive_v1.0 checkpoint (must include fold_all). Leave blank to disable nninteractive_segment.",
+      "default": ""
     }
   }
 }

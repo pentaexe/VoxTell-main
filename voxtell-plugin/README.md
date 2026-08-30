@@ -82,15 +82,29 @@ structures only.
 
 ## Install
 
+Development / local use:
+
 ```bash
-/plugin install voxtell-seg
+claude --plugin-dir /path/to/voxtell-plugin
+claude plugin validate /path/to/voxtell-plugin --strict   # check it first
 ```
 
-Or point Claude Code at this directory. On first load it prompts for:
+For distribution, publish through a marketplace and `/plugin install voxtell-seg`.
 
-- `voxtell_python` — a Python that can import `voxtell` and CUDA torch
-- `voxtell_model_dir` — checkpoint directory with `plans.json` and `fold_0/`
-- `nninteractive_weights` — optional; needs `fold_all`
+Configuration comes from `userConfig` in the manifest:
+
+| Key | What |
+|---|---|
+| `voxtell_python` | a Python that can import `voxtell` and CUDA torch |
+| `voxtell_model_dir` | checkpoint directory with `plans.json` and `fold_0/` |
+| `nninteractive_weights` | optional; needs `fold_all`. Blank disables that tool. |
+
+> **Every `userConfig` key the MCP server references needs a `default`.**
+> `--plugin-dir` does not prompt for configuration, so an unresolved
+> `${user_config.…}` makes the server entry invalid — and an invalid entry is
+> **skipped silently**, with nothing in `--debug` to say why. The symptom is a
+> plugin that validates and loads while its tools simply do not exist. The
+> defaults here point at this workstation; override them on install elsewhere.
 
 ## Two transports: Claude Code and ChatGPT
 
