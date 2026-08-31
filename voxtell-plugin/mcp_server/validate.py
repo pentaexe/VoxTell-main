@@ -50,9 +50,13 @@ REGION_TERMS = {
 }
 
 # Regions that can plausibly co-occur in one field of view.
+# "torso" is a scan spanning several of these at once, so it is adjacent to all
+# of them — a prompt for any abdominal or thoracic structure is fine in one.
 ADJACENT = {
     ("thorax", "abdomen"), ("abdomen", "thorax"),
     ("abdomen", "pelvis"), ("pelvis", "abdomen"),
+    ("thorax", "torso"), ("abdomen", "torso"), ("pelvis", "torso"),
+    ("torso", "thorax"), ("torso", "abdomen"), ("torso", "pelvis"),
 }
 
 
@@ -106,10 +110,24 @@ def describe_image(arr, spacing=None, filename: str = "") -> ImageFacts:
     # torso CT is conventionally 512x512 with thicker slices.
     inplane = max(f.shape[-2:]) if len(f.shape) >= 2 else 0
 
+    # z-extent separates a targeted study from a scan covering several regions.
+    # A chest-only CT is roughly 300 mm; anything much past that is spanning
+    # thorax and abdomen together, and calling it either one alone is wrong.
+    z_mm = None
+    if spacing and len(f.shape) >= 3:
+        try:
+            z_mm = max(s * z for s, z in zip(f.shape[-3:], spacing[-3:]))
+        except Exception:
+            z_mm = None
+
     if f.modality == "CT" and f.air_fraction is not None:
         if f.air_fraction > 0.08:
-            f.region = "thorax" if f.air_fraction > 0.20 else "abdomen"
-            f.notes.append("substantial internal air implies a torso field of view")
+            if z_mm and z_mm > 400:
+                f.region = "torso"
+                f.notes.append(f"{z_mm:.0f} mm of coverage spans thorax and abdomen together")
+            else:
+                f.region = "thorax" if f.air_fraction > 0.20 else "abdomen"
+                f.notes.append("substantial internal air implies a torso field of view")
         elif f.air_fraction < 0.02 and inplane <= 320:
             f.region = "brain"
             f.notes.append("almost no internal air and a compact field of view implies a head")
