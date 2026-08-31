@@ -200,13 +200,13 @@ source(s, "Case CT_AMOS_amos_0018 (63×512×512). Both arms run INT4, so precisi
 s = slide()
 head(s, "VoxTell: Accuracy", "05")
 
-stat(s, "+0.0003", "mean DSC change  ·  0.8090 → 0.8093", L, 1.9, 5.5, vsize=50)
+stat(s, "+0.0003", "tile_step 0.5 → 0.75  ·  0.8090 → 0.8093", L, 1.9, 5.5, vsize=50)
 tx(s, "65 objects across 5 abdominal CT cases", L, 3.35, 5.5, 0.4,
    size=13, color=MUTED)
 bullets(s, [
-    "Speed optimizations cost no accuracy",
     "Measured against expert annotation",
-    "Same checkpoint and fold on both arms",
+    "Same checkpoint on both arms",
+    "No pass/fail threshold applied",
 ], L, 4.0, 5.4, size=12, gap=0.42)
 
 tx(s, "One caveat, stated plainly", 7.0, 1.9, 4.8, 0.4, size=15, bold=True, color=ACCENT)
@@ -245,7 +245,7 @@ bullets(s, [
 tx(s, "CPU time held at 6:18 to 6:33 across runs while walltime fell, "
       "which is what a GPU-bound workload looks like.",
    L, 5.95, 11.4, 0.5, size=13)
-source(s, "20 CT cases from the CVPR validation set, fold='all' checkpoint, H100 MIG 3g.40gb. CPU efficiency 13 to 20% of 8 cores; allocation since reduced to 2.")
+source(s, "20 CT cases from the CVPR validation set, fold='all' checkpoint, H100 MIG 3g.40gb. CPU efficiency 13 to 20% of the 8 cores requested.")
 
 # ═══ 7 — Break-even ════════════════════════════════════════════════════════
 s = slide()
@@ -273,20 +273,20 @@ s = slide()
 head(s, "End Results", "08")
 
 table(s, ["", "Speedup", "Accuracy", "Evidence"], [
-    ("VoxTell", "2.7×  (2.6 to 2.8×)", "+0.0003 DSC", "4 runs, abdominal CT"),
+    ("VoxTell", "2.7×  (2.6 to 2.8×)", "+0.0003 DSC", "4 speed runs · 65 objects for DSC"),
     ("nnInteractive", "1.33×  (1.28 to 1.39×)", "+0.0002 DSC", "4 runs, 294 objects"),
 ], L, 1.85, CW, 1.5, widths=[2.6, 3.0, 2.6, 3.25])
 
 tx(s, "Still Open", L, 3.9, 5, 0.4, size=14, bold=True, color=ACCENT)
 bullets(s, [
-    "INT4 under-segments by 5.5% on one case",
-    "Not yet measured across the validation set",
+    "Speedup measured on a single CT volume",
+    "INT4 under-segments 5.5%, on one case only",
 ], L, 4.4, 5.9, size=12, gap=0.42, color=MUTED)
 
 tx(s, "Next", 7.0, 3.9, 5, 0.4, size=14, bold=True, color=ACCENT)
 bullets(s, [
+    "Repeat across more CT volumes and prompt types",
     "Run INT4 against all 881 validation cases",
-    "Turns a direction into a bound worth acting on",
 ], 7.0, 4.4, 5.2, size=12, gap=0.42, color=MUTED)
 
 tx(s, "The most useful thing I built was a benchmark that kept catching itself.",
