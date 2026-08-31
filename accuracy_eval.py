@@ -9,11 +9,18 @@ Dataset format: NIfTI (.nii.gz) — AMOS abdominal multi-organ dataset
   imagesTs/  — amos_XXXX.nii.gz  (MRI/CT volumes)
   labelsTs/  — amos_XXXX.nii.gz  (multi-class ground truth, label IDs 1–15)
 
-AMOS label mapping:
-  1=spleen, 2=right kidney, 3=left kidney, 4=gallbladder, 5=esophagus,
-  6=liver, 7=stomach, 8=aorta, 9=inferior vena cava, 10=pancreas,
-  11=right adrenal gland, 12=left adrenal gland, 13=duodenum,
-  14=bladder, 15=prostate/uterus
+Label mapping (see AMOS_LABELS below — that dict is what scoring uses):
+  1=liver, 2=right kidney, 3=spleen, 4=pancreas, 5=aorta,
+  6=inferior vena cava, 7=right adrenal gland, 8=left adrenal gland,
+  9=gallbladder, 10=esophagus, 11=stomach, 12=duodenum, 13=left kidney
+
+NOTE: this docstring previously listed the standard AMOS convention
+(1=spleen, 2=right kidney, 3=left kidney, ...), which is NOT what this data
+uses and contradicted the dict twenty lines below. Scoring was always correct
+because it reads the dict, but anyone trusting the comment would score the
+wrong organ and get DSC 0.0000 while the segmentation was fine. Verified
+against anatomy: label 3 sits furthest left and 91 mm superior to label 13,
+which is the spleen; labels 2 and 13 are a mirror-symmetric kidney pair.
 
 Usage:
   python accuracy_eval.py \
