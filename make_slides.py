@@ -134,7 +134,7 @@ tx(s, "Brian Xiao   ·   Fir cluster, Alliance Canada   ·   August 2026",
 
 # ═══ 2 — The two models ════════════════════════════════════════════════════
 s = slide()
-head(s, "Two models, two prompting styles", "02")
+head(s, "Two Models, Two Prompting Styles", "02")
 
 tx(s, "VoxTell", L, 1.75, 5, 0.45, size=20, bold=True, color=ACCENT)
 bullets(s, [
@@ -158,7 +158,7 @@ source(s, "DSC is the Dice Similarity Coefficient: overlap between prediction an
 
 # ═══ 3 — Method + audit (merged) ═══════════════════════════════════════════
 s = slide()
-head(s, "How the number was measured", "03")
+head(s, "How the Number Was Measured", "03")
 
 tx(s, "VoxTell speedup, as measurement error was removed", L, 1.62, 8, 0.35,
    size=11, color=MUTED)
@@ -174,7 +174,7 @@ for i, (val, why, col) in enumerate([
     tx(s, why, x, 2.98, 2.7, 0.6, size=10, color=MUTED)
 
 rule(s, L, 3.75, CW)
-tx(s, "What changed each time", L, 4.0, 6, 0.35, size=12, bold=True, color=ACCENT)
+tx(s, "What Changed Each Time", L, 4.0, 6, 0.35, size=12, bold=True, color=ACCENT)
 bullets(s, [
     "Hold precision constant, so quantization cannot pose as algorithmic gain",
     "Warm the GPU, text backbone and sliding-window path before timing",
@@ -189,7 +189,7 @@ source(s, "The largest error surfaced by running the same script on two GPUs: id
 
 # ═══ 4 — What made it faster ═══════════════════════════════════════════════
 s = slide()
-head(s, "VoxTell: what made it faster", "04")
+head(s, "VoxTell: What Made It Faster", "04")
 
 table(s, ["Change", "Effect", "DSC"], [
     ("Sliding window", "tile_step 0.75 plus crop to non-zero, 25 to 9 patches", "+0.0003"),
@@ -206,7 +206,7 @@ source(s, "Case CT_AMOS_amos_0018 (63×512×512). Both arms run INT4, so precisi
 
 # ═══ 5 — VoxTell accuracy ══════════════════════════════════════════════════
 s = slide()
-head(s, "VoxTell: accuracy held", "05")
+head(s, "VoxTell: Accuracy", "05")
 
 stat(s, "+0.0003", "mean DSC change  ·  0.8090 → 0.8093", L, 1.9, 5.5, vsize=54)
 tx(s, "65 objects across 5 abdominal CT cases", L, 3.5, 5.5, 0.4,
@@ -225,7 +225,7 @@ source(s, "VoxTell DSC from accuracy_results.csv. The INT4 comparison is n=1 and
 
 # ═══ 6 — nnInteractive result ══════════════════════════════════════════════
 s = slide()
-head(s, "nnInteractive: compiling the network", "06")
+head(s, "nnInteractive: Compiling the Network", "06")
 
 tx(s, "torch.compile(network, mode='reduce-overhead')", L, 1.68, 9, 0.4,
    size=15, color=ACCENT)
@@ -247,7 +247,7 @@ source(s, "20 CT cases from the CVPR validation set, fold='all' checkpoint, H100
 
 # ═══ 7 — Break-even ════════════════════════════════════════════════════════
 s = slide()
-head(s, "The speedup is not free at the start", "07")
+head(s, "The Speedup Is Not Free at the Start", "07")
 
 tx(s, "Compiling costs time before the first prediction.", L, 1.72, 10, 0.5, size=18)
 rule(s, L, 2.55, CW)
@@ -266,7 +266,7 @@ source(s, "23.6s measured on node-local /tmp. The shared filesystem is slower, s
 
 # ═══ 8 — Summary ═══════════════════════════════════════════════════════════
 s = slide()
-head(s, "Where both models landed", "08")
+head(s, "End Results", "08")
 
 table(s, ["", "Speedup", "Accuracy", "Evidence"], [
     ("VoxTell", "2.7×  (2.6 to 2.8×)", "+0.0003 DSC", "4 runs, abdominal CT"),
