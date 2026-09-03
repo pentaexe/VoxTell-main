@@ -82,29 +82,62 @@ structures only.
 
 ## Install
 
-Development / local use:
+In Claude Code:
 
-```bash
-claude --plugin-dir /path/to/voxtell-plugin
-claude plugin validate /path/to/voxtell-plugin --strict   # check it first
+```
+/plugin marketplace add pentaexe/VoxTell-main
+/plugin install voxtell-seg@voxtell
 ```
 
-For distribution, publish through a marketplace and `/plugin install voxtell-seg`.
+Then, in any conversation:
 
-Configuration comes from `userConfig` in the manifest:
+> Run the setup tool with download true
 
-| Key | What |
-|---|---|
-| `voxtell_python` | a Python that can import `voxtell` and CUDA torch |
-| `voxtell_model_dir` | checkpoint directory with `plans.json` and `fold_0/` |
-| `nninteractive_weights` | optional; needs `fold_all`. Blank disables that tool. |
+That checks your machine and fetches the ~1.7 GB checkpoint from Hugging Face
+(`mrokuss/VoxTell`) into `~/.cache/voxtell_models`. The checkpoint is not in the
+repository, so a fresh install always needs this once.
+
+### Prerequisites
+
+```bash
+pip install voxtell nibabel accelerate huggingface_hub
+pip install torch --index-url https://download.pytorch.org/whl/cu126
+```
+
+A CUDA GPU is effectively required. CPU inference runs but is impractically slow
+on a 3-D volume.
+
+`accelerate` looks optional and is not: without it, VoxTell's INT4 loader catches
+the ImportError and serves FP16 while still logging INT4.
+
+You can run the same check outside Claude Code:
+
+```bash
+python skills/voxtell-inference/scripts/setup_local.py --download
+```
+
+### Configuration
+
+All three keys are optional and have working defaults.
+
+| Key | Default | When to change it |
+|---|---|---|
+| `voxtell_python` | `python` | VoxTell lives in a specific env, e.g. `~/envs/voxtell/bin/python` |
+| `voxtell_model_dir` | blank | You already have the checkpoint somewhere; point at the folder holding `plans.json` |
+| `nninteractive_weights` | blank | You have the nnInteractive checkpoint (must include `fold_all`) |
+
+### Developing on it
+
+```bash
+claude plugin validate ./voxtell-plugin --strict
+claude --plugin-dir ./voxtell-plugin
+```
 
 > **Every `userConfig` key the MCP server references needs a `default`.**
 > `--plugin-dir` does not prompt for configuration, so an unresolved
-> `${user_config.…}` makes the server entry invalid — and an invalid entry is
-> **skipped silently**, with nothing in `--debug` to say why. The symptom is a
-> plugin that validates and loads while its tools simply do not exist. The
-> defaults here point at this workstation; override them on install elsewhere.
+> `${user_config.…}` makes the server entry invalid, and an invalid entry is
+> **skipped silently** with nothing in `--debug` to explain it. The symptom is a
+> plugin that validates and loads while its tools simply do not exist.
 
 ## Two transports: Claude Code and ChatGPT
 

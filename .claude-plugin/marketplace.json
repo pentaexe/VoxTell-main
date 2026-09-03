@@ -1,0 +1,14 @@
+{
+  "name": "voxtell",
+  "owner": {
+    "name": "Brian Xiao",
+    "url": "https://github.com/pentaexe/VoxTell-main"
+  },
+  "plugins": [
+    {
+      "name": "voxtell-seg",
+      "source": "./voxtell-plugin",
+      "description": "Run VoxTell text-prompted and nnInteractive bbox-prompted 3-D medical image segmentation as callable tools, with request validation that refuses anatomically impossible prompts before any compute is spent."
+    }
+  ]
+}

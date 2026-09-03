@@ -28,9 +28,47 @@ sys.path.insert(0, str(Path(__file__).parent))
 import validate as V  # noqa: E402
 
 PROTOCOL_VERSION = "2024-11-05"
-MODEL_DIR   = os.environ.get("VOXTELL_MODEL_DIR", "")
 NNI_WEIGHTS = os.environ.get("NNINTERACTIVE_WEIGHTS", "")
-OUT_DIR     = Path(os.environ.get("VOXTELL_OUTPUT_DIR", Path.home() / ".voxtell_mcp"))
+OUT_DIR     = Path(os.environ.get("VOXTELL_OUTPUT_DIR",
+                                  Path.home() / ".voxtell_mcp" / "segmentations"))
+HF_REPO     = "mrokuss/VoxTell"
+MODEL_NAME  = "voxtell_v1.1"
+
+
+def resolve_model_dir(download: bool = False) -> tuple[str, str]:
+    """
+    Find the VoxTell checkpoint without requiring the user to configure a path.
+
+    Order: an explicit VOXTELL_MODEL_DIR, then anywhere we have downloaded it
+    before, then (only when asked) a fresh download from Hugging Face. The
+    checkpoint is ~1.7 GB and is not in the git repository, so a first run on a
+    new machine has to fetch it.
+
+    Returns (path, status) where path is "" if nothing usable was found.
+    """
+    env = os.environ.get("VOXTELL_MODEL_DIR", "").strip()
+    if env and (Path(env) / "plans.json").exists():
+        return env, "configured"
+
+    cache = Path.home() / ".cache" / "voxtell_models" / MODEL_NAME
+    if (cache / "plans.json").exists():
+        return str(cache), "cached"
+
+    if not download:
+        return "", "missing"
+
+    try:
+        from huggingface_hub import snapshot_download
+    except ImportError:
+        return "", "no-hf-hub"
+
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    snapshot_download(repo_id=HF_REPO, allow_patterns=[f"{MODEL_NAME}/*"],
+                      local_dir=str(cache.parent))
+    return (str(cache), "downloaded") if (cache / "plans.json").exists() else ("", "download-failed")
+
+
+MODEL_DIR, MODEL_STATUS = resolve_model_dir()
 
 
 # ── Protocol plumbing ─────────────────────────────────────────────────────────
@@ -147,7 +185,79 @@ TOOLS = [
         "description": "List available segmentation models, how each is prompted, and their known limits.",
         "inputSchema": {"type": "object", "properties": {}},
     },
+    {
+        "name": "setup",
+        "description": (
+            "Check this machine is ready to run VoxTell and report what is missing. "
+            "Pass download=true to fetch the ~1.7 GB checkpoint from Hugging Face if it "
+            "is not already present. Run this first on a new install."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "download": {
+                    "type": "boolean",
+                    "description": "Download the checkpoint if missing. Default false (report only).",
+                    "default": False,
+                }
+            },
+        },
+    },
 ]
+
+
+def tool_setup(args):
+    global MODEL_DIR, MODEL_STATUS
+    lines, ready = [], True
+
+    def probe(mod, label, hint):
+        nonlocal ready
+        try:
+            m = __import__(mod)
+            lines.append(f"  ok      {label:<22} {getattr(m, '__version__', 'installed')}")
+        except Exception:
+            ready = False
+            lines.append(f"  MISSING {label:<22} {hint}")
+
+    probe("torch", "torch", "pip install torch --index-url https://download.pytorch.org/whl/cu126")
+    probe("voxtell", "voxtell", "pip install voxtell")
+    probe("nibabel", "nibabel", "pip install nibabel")
+    probe("transformers", "transformers", "pip install transformers")
+
+    try:
+        import torch
+        lines.append(f"  {'ok     ' if torch.cuda.is_available() else 'warn   '} "
+                     f"{'CUDA':<22} "
+                     f"{torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'not available; CPU will be very slow'}")
+    except Exception:
+        pass
+
+    try:
+        import accelerate  # noqa: F401
+        lines.append(f"  ok      {'accelerate':<22} required for INT4; without it the backbone silently uses FP16")
+    except ImportError:
+        lines.append(f"  warn    {'accelerate':<22} missing: INT4 will silently fall back to FP16. pip install accelerate")
+
+    if args.get("download") and MODEL_STATUS == "missing":
+        lines.append("\n  Downloading checkpoint from Hugging Face (~1.7 GB, this takes a while)...")
+        MODEL_DIR, MODEL_STATUS = resolve_model_dir(download=True)
+
+    note = {
+        "configured": f"using VOXTELL_MODEL_DIR: {MODEL_DIR}",
+        "cached":     f"found at {MODEL_DIR}",
+        "downloaded": f"downloaded to {MODEL_DIR}",
+        "missing":    f"not found. Call setup with download=true, or set VOXTELL_MODEL_DIR to a folder containing plans.json",
+        "no-hf-hub":  "huggingface_hub not installed: pip install huggingface_hub",
+        "download-failed": "download completed but plans.json is not where expected",
+    }[MODEL_STATUS]
+    ok_model = MODEL_STATUS in ("configured", "cached", "downloaded")
+    lines.append(f"\n  {'ok     ' if ok_model else 'MISSING'} checkpoint             {note}")
+
+    ready = ready and ok_model
+    lines.append("")
+    lines.append("READY — try: check_request on an image, then voxtell_segment"
+                 if ready else "NOT READY — resolve the items above first")
+    return text_result("VoxTell setup check\n\n" + "\n".join(lines), is_error=not ready)
 
 
 def tool_check_request(args):
@@ -193,8 +303,9 @@ def tool_voxtell_segment(args):
     if not MODEL_DIR or not Path(MODEL_DIR).exists():
         return text_result(
             f"Validation passed ({v.reason})\n\n"
-            f"Cannot run inference: VOXTELL_MODEL_DIR is not set or does not exist "
-            f"({MODEL_DIR!r}). Set it in the plugin's user config.",
+            "Cannot run inference: the VoxTell checkpoint was not found.\n"
+            "Run the setup tool with download=true to fetch it (~1.7 GB), or point "
+            "VOXTELL_MODEL_DIR at a folder containing plans.json.",
             is_error=True,
         )
 
@@ -317,6 +428,7 @@ HANDLERS = {
     "voxtell_segment": tool_voxtell_segment,
     "nninteractive_segment": tool_nninteractive_segment,
     "list_models": tool_list_models,
+    "setup": tool_setup,
 }
 
 

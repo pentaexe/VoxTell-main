@@ -7,6 +7,17 @@ You are running VoxTell experiments on the Fir HPC cluster. Follow the procedure
 below rather than improvising — most of it exists because a specific mistake was
 made once and should not be made again.
 
+## Supporting files in this skill
+
+Read these when the summary here is not enough:
+
+| File | Contents |
+|---|---|
+| `reference/measurement-rules.md` | Each rule, the artifact it prevents, and what that artifact cost |
+| `reference/cluster.md` | Fir paths, environments, allocation, SLURM template, git direction |
+| `scripts/validate_job.py` | Preflight linter. `python scripts/validate_job.py job.sh` — exit 1 blocks submission |
+| `scripts/setup_local.py` | Check a laptop is ready and fetch the checkpoint: `python scripts/setup_local.py --download` |
+
 ## Answer from this file. Do not go searching the repo for numbers.
 
 This file is canonical for results, paths, environments and rules. Several files

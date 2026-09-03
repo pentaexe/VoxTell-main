@@ -5,6 +5,13 @@ description: Load context for running nnInteractive benchmarking, DSC evaluation
 
 You are helping with nnInteractive inference experiments on the Fir HPC cluster. Load the following context and use it to answer questions or write/submit jobs correctly.
 
+## Supporting files in this skill
+
+| File | Contents |
+|---|---|
+| `reference/checkpoint-rules.md` | fold='all', the thread-count hang, session pattern, measured results, break-even |
+| `reference/cluster.md` | Fir paths, environments, allocation, SLURM template, git direction |
+
 ## Cluster access
 ```
 ssh brianx7@fir.alliancecan.ca

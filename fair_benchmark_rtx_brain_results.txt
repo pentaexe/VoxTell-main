@@ -2,16 +2,16 @@ Fair GPU-vs-GPU Benchmark Results
 ========================================
 GPU: NVIDIA GeForce RTX 4070 SUPER
 
-v0_gpu total : 2.27s  (INT4 NF4, tile_step=0.5, no cache, numpy preprocess)
-v3 cold total: 1.28s  (INT4 NF4, tile_step=0.75, no cache, Numba)
+v0_gpu total : 2.17s  (INT4 NF4, tile_step=0.5, no cache, numpy preprocess)
+v3 cold total: 1.36s  (INT4 NF4, tile_step=0.75, no cache, Numba)
 v3 warm total: 1.12s  (INT4 NF4, tile_step=0.75, cache hit, Numba)
 
-Speedup cold (cold INT4 -> cold INT4, no cache, pure algo): 1.8x
-Speedup warm (cold INT4 -> cached INT4, full stack):        2.0x
-Cache gain on embedding (cold -> warm INT4):                84.3×
+Speedup cold (cold INT4 -> cold INT4, no cache, pure algo): 1.6x
+Speedup warm (cold INT4 -> cached INT4, full stack):        1.9x
+Cache gain on embedding (cold -> warm INT4):                153.3×
 Patches: v0_gpu 4 vs v3 4
-Sliding window alone: 2.007s -> 1.036s = 1.94x
-Preprocessing: 0.068s -> 0.073s  (SLOWER - likely Numba JIT on first call)
+Sliding window alone: 1.912s -> 1.024s = 1.87x
+Preprocessing: 0.071s -> 0.083s  (SLOWER - likely Numba JIT on first call)
 
 Note: Both arms use identical INT4 (NF4) via bitsandbytes. Precision-matched.
 Note: Original 26x used CPU baseline (FP32 text encoder VRAM overflow).

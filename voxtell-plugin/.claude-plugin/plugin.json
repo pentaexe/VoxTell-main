@@ -18,20 +18,20 @@
   "userConfig": {
     "voxtell_python": {
       "type": "string",
-      "title": "Python interpreter with VoxTell installed",
-      "description": "Full path to a Python that can import voxtell and torch with CUDA.",
-      "default": "C:\\Users\\brian\\miniconda3\\envs\\voxtell\\python.exe"
+      "title": "Python interpreter",
+      "description": "A Python that can import voxtell and torch. Leave as 'python' to use whatever is on PATH; give a full path if VoxTell lives in a specific environment (e.g. C:\\\\Users\\\\you\\\\miniconda3\\\\envs\\\\voxtell\\\\python.exe or /home/you/envs/voxtell/bin/python).",
+      "default": "python"
     },
     "voxtell_model_dir": {
       "type": "string",
-      "title": "VoxTell checkpoint directory",
-      "description": "Directory containing plans.json and fold_0/checkpoint_final.pth",
-      "default": "C:\\Users\\brian\\OneDrive\\Desktop\\Code\\VoxTell-main\\models\\voxtell_v1.1"
+      "title": "VoxTell checkpoint directory (optional)",
+      "description": "Folder containing plans.json and fold_0/checkpoint_final.pth. Leave blank and the setup tool will download it from Hugging Face to ~/.cache/voxtell_models.",
+      "default": ""
     },
     "nninteractive_weights": {
       "type": "string",
-      "title": "nnInteractive weights directory",
-      "description": "Directory containing the nnInteractive_v1.0 checkpoint (must include fold_all). Leave blank to disable nninteractive_segment.",
+      "title": "nnInteractive weights directory (optional)",
+      "description": "Folder containing the nnInteractive_v1.0 checkpoint, which must include fold_all. Leave blank to disable nninteractive_segment.",
       "default": ""
     }
   }
