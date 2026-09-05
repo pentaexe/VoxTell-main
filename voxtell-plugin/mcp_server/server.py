@@ -27,6 +27,41 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import validate as V  # noqa: E402
 
+
+# ── Use the optimized voxtell, not the stock one from PyPI ────────────────────
+# This plugin lives inside the VoxTell fork whose predictor carries the INT4
+# backbone, the embedding cache, Numba preprocessing and tile_step=0.75. None of
+# those are in the DKFZ package on PyPI. If `import voxtell` resolves to
+# site-packages, the tools run and return plausible masks with none of the
+# optimizations — a silent downgrade, which is exactly the failure this plugin
+# exists to prevent elsewhere. So put the repo first on sys.path when we can
+# find it, and report which copy is live either way.
+
+def _find_repo_voxtell() -> Path | None:
+    for parent in Path(__file__).resolve().parents[:4]:
+        if (parent / "voxtell" / "__init__.py").exists():
+            return parent
+    return None
+
+
+REPO_ROOT = _find_repo_voxtell()
+if REPO_ROOT is not None:
+    sys.path.insert(0, str(REPO_ROOT))
+
+
+def voxtell_provenance() -> tuple[str, str]:
+    """Return (path, kind) for the voxtell package that will actually import."""
+    try:
+        import voxtell
+    except Exception as e:
+        return "", f"not importable: {type(e).__name__}"
+    p = Path(voxtell.__file__).resolve()
+    if REPO_ROOT is not None and str(p).startswith(str(REPO_ROOT)):
+        return str(p.parent), "optimized (this repo)"
+    if "site-packages" in str(p):
+        return str(p.parent), "STOCK PyPI build — optimizations absent"
+    return str(p.parent), "unrecognised location"
+
 PROTOCOL_VERSION = "2024-11-05"
 NNI_WEIGHTS = os.environ.get("NNINTERACTIVE_WEIGHTS", "")
 OUT_DIR     = Path(os.environ.get("VOXTELL_OUTPUT_DIR",
@@ -220,7 +255,19 @@ def tool_setup(args):
             lines.append(f"  MISSING {label:<22} {hint}")
 
     probe("torch", "torch", "pip install torch --index-url https://download.pytorch.org/whl/cu126")
-    probe("voxtell", "voxtell", "pip install voxtell")
+
+    vpath, vkind = voxtell_provenance()
+    if "optimized" in vkind:
+        lines.append(f"  ok      {'voxtell build':<22} {vkind}")
+    elif not vpath:
+        ready = False
+        lines.append(f"  MISSING {'voxtell':<22} pip install -e . from the VoxTell-main checkout")
+    else:
+        ready = False
+        lines.append(f"  WRONG   {'voxtell build':<22} {vkind}")
+        lines.append(f"          {'':<22} loaded from {vpath}")
+        lines.append(f"          {'':<22} the speedups measured here are not in that copy.")
+        lines.append(f"          {'':<22} Fix: pip install -e /path/to/VoxTell-main")
     probe("nibabel", "nibabel", "pip install nibabel")
     probe("transformers", "transformers", "pip install transformers")
 
@@ -407,6 +454,7 @@ def tool_nninteractive_segment(args):
 
 def tool_list_models(args):
     return text_result(
+        f"voxtell build : {voxtell_provenance()[1]}\n\n"
         "VoxTell — text-prompted 3-D segmentation\n"
         "  prompt      : free text, e.g. 'the spleen'\n"
         "  encoder     : Qwen3-Embedding-4B, INT4 (NF4) by default\n"

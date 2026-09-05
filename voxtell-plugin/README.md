@@ -99,32 +99,64 @@ repository, so a fresh install always needs this once.
 
 ### Prerequisites
 
+> **Install VoxTell from this repository, not from PyPI.**
+> `pip install voxtell` fetches the upstream DKFZ package. The optimizations
+> measured here — the INT4 text backbone, the embedding cache, Numba
+> preprocessing and `tile_step=0.75` — live in this fork's
+> `voxtell/inference/predictor.py` and are **not** in the PyPI build. A plugin
+> pointed at the PyPI copy still segments, and returns masks that look fine, with
+> none of the speedups. The `setup` and `list_models` tools report which build is
+> live so this is visible rather than silent.
+
 ```bash
-pip install voxtell nibabel accelerate huggingface_hub
+git clone https://github.com/pentaexe/VoxTell-main
+cd VoxTell-main
+pip install -e .                                  # the optimized build
+pip install nibabel accelerate huggingface_hub
 pip install torch --index-url https://download.pytorch.org/whl/cu126
 ```
 
-A CUDA GPU is effectively required. CPU inference runs but is impractically slow
-on a 3-D volume.
+A CUDA GPU is effectively required; CPU inference on a 3-D volume takes minutes.
 
-`accelerate` looks optional and is not: without it, VoxTell's INT4 loader catches
+`accelerate` looks optional and is not: without it VoxTell's INT4 loader catches
 the ImportError and serves FP16 while still logging INT4.
-
-You can run the same check outside Claude Code:
-
-```bash
-python skills/voxtell-inference/scripts/setup_local.py --download
-```
 
 ### Configuration
 
-All three keys are optional and have working defaults.
+**`voxtell_python` must be a full path.** There is no bare interpreter name that
+works everywhere: on Ubuntu `python` usually does not exist, and on Windows
+`python`, `python3` and `py` all commonly resolve to the Microsoft Store stub,
+which exits without running anything.
 
-| Key | Default | When to change it |
+To find the right value:
+
+```bash
+python3 skills/voxtell-inference/scripts/doctor.py
+```
+
+It tests every interpreter it can find, reports which have voxtell and whether
+it is the optimized build, and prints the exact path to paste.
+
+| Key | Default | Notes |
 |---|---|---|
-| `voxtell_python` | `python` | VoxTell lives in a specific env, e.g. `~/envs/voxtell/bin/python` |
-| `voxtell_model_dir` | blank | You already have the checkpoint somewhere; point at the folder holding `plans.json` |
-| `nninteractive_weights` | blank | You have the nnInteractive checkpoint (must include `fold_all`) |
+| `voxtell_python` | `python3` | **Set this.** Full path to the env where you ran `pip install -e .` |
+| `voxtell_model_dir` | blank | Optional. Blank means download to `~/.cache/voxtell_models` |
+| `nninteractive_weights` | blank | Optional. Needs `fold_all` |
+
+### Installed and enabled, but no tools appear
+
+That is almost always `voxtell_python`. Claude Code launches the MCP server as a
+subprocess; if the command does not resolve to a real interpreter, the process
+never starts, so there is no server to write a log. The plugin looks healthy and
+has no tools.
+
+Confirm by running the command yourself:
+
+```bash
+<voxtell_python> voxtell-plugin/mcp_server/server.py --http --port 8765
+```
+
+A working interpreter prints a startup line. A stub exits silently.
 
 ### Developing on it
 

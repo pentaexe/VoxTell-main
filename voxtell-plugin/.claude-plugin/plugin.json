@@ -18,9 +18,9 @@
   "userConfig": {
     "voxtell_python": {
       "type": "string",
-      "title": "Python interpreter",
-      "description": "A Python that can import voxtell and torch. Leave as 'python' to use whatever is on PATH; give a full path if VoxTell lives in a specific environment (e.g. C:\\\\Users\\\\you\\\\miniconda3\\\\envs\\\\voxtell\\\\python.exe or /home/you/envs/voxtell/bin/python).",
-      "default": "python"
+      "title": "Python interpreter (set this to a full path)",
+      "description": "Full path to the interpreter where you ran 'pip install -e .' from the VoxTell checkout. No bare name works everywhere: on Ubuntu 'python' usually does not exist, and on Windows python/python3/py commonly resolve to the Microsoft Store stub, which exits without running. If no tools appear after install, this is why. Run skills/voxtell-inference/scripts/doctor.py to get the exact value.",
+      "default": "python3"
     },
     "voxtell_model_dir": {
       "type": "string",
