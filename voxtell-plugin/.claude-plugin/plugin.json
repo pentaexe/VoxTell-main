@@ -1,7 +1,7 @@
 {
   "name": "voxtell-seg",
   "displayName": "VoxTell & nnInteractive Segmentation",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Run VoxTell text-prompted and nnInteractive bbox-prompted 3-D medical image segmentation as callable tools, with request validation that refuses anatomically impossible prompts before any compute is spent.",
   "author": {
     "name": "Brian Xiao"

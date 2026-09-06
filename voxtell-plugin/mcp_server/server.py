@@ -105,6 +105,22 @@ def voxtell_provenance() -> tuple[str, str]:
     return path, f"PARTIAL — missing: {', '.join(missing)}"
 
 PROTOCOL_VERSION = "2024-11-05"
+
+
+def _plugin_version() -> str:
+    """Read the version from the manifest rather than repeating it here.
+
+    Two copies of a version number drift, and the moment they do, the one a user
+    reads when reporting a problem is the wrong one.
+    """
+    try:
+        manifest = Path(__file__).resolve().parent.parent / ".claude-plugin" / "plugin.json"
+        return json.loads(manifest.read_text(encoding="utf-8")).get("version", "unknown")
+    except Exception:
+        return "unknown"
+
+
+VERSION = _plugin_version()
 NNI_WEIGHTS = os.environ.get("NNINTERACTIVE_WEIGHTS", "")
 OUT_DIR     = Path(os.environ.get("VOXTELL_OUTPUT_DIR",
                                   Path.home() / ".voxtell_mcp" / "segmentations"))
@@ -287,7 +303,12 @@ TOOLS = [
 
 def tool_setup(args):
     global MODEL_DIR, MODEL_STATUS
-    lines, ready = [], True
+    # Lead with the version and the interpreter. When someone reports that the
+    # plugin misbehaves, these are the first two things worth knowing, and
+    # "which copy did you actually install" is the question that has cost the
+    # most time so far.
+    lines, ready = [f"  plugin  {'version':<22} {VERSION}",
+                    f"  python  {'interpreter':<22} {sys.executable}"], True
 
     def probe(mod, label, hint):
         nonlocal ready
@@ -567,7 +588,7 @@ def handle(req: dict):
         return ok({
             "protocolVersion": PROTOCOL_VERSION,
             "capabilities": {"tools": {}},
-            "serverInfo": {"name": "voxtell-seg", "version": "0.1.0"},
+            "serverInfo": {"name": "voxtell-seg", "version": VERSION},
         })
     if method == "notifications/initialized":
         return None
