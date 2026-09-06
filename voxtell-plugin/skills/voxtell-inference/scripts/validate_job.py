@@ -18,6 +18,16 @@ import re
 import sys
 from pathlib import Path
 
+# A Windows console defaults to cp1252, which cannot encode the em dashes and
+# arrows below. Without this the very first print raises UnicodeEncodeError and
+# the script produces no output at all — a confusing failure for something whose
+# whole job is to explain what is wrong. Degrade the characters, not the run.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 OK, WARN, FAIL = "PASS", "WARN", "FAIL"
 
 
@@ -50,8 +60,12 @@ def check_sh(path: Path, rep: Report):
     py_target = re.search(r"python\s+-u\s+(\S+\.py)", t)
     target = py_target.group(1) if py_target else ""
     is_nni = "nni" in target.lower() or "nninteractive" in target.lower()
-    has_vox_env = "/home/brianx7/envs/voxtell" in t
-    has_nni_env = "/scratch/brianx7/envs/nninteractive" in t
+    # Match on the environment name, not the full path. Everyone on the cluster
+    # has their own home and scratch, so pinning one account's paths here made
+    # this report a FAIL for every other user regardless of what the job said.
+    activations = re.findall(r"source\s+(\S+)/bin/activate", t)
+    has_vox_env = any(re.search(r"envs/voxtell\b", a) for a in activations)
+    has_nni_env = any(re.search(r"envs/nninteractive\b", a) for a in activations)
     if is_nni and has_nni_env:
         rep.add(OK, "venv matches model", "nnInteractive env")
     elif not is_nni and has_vox_env:
@@ -125,19 +139,24 @@ def check_sh(path: Path, rep: Report):
     else:
         rep.add(OK, "walltime", tm.group(1))
 
-    # 8 — log destination
-    if "/scratch/brianx7/logs/" in t and "%j" in t:
+    # 8 — log destination. Match the shape of the path, not one user's account:
+    # what matters is that logs land on scratch and carry the job id.
+    on_scratch = re.search(r"--output=\S*/scratch/\S+", t)
+    if on_scratch and "%j" in t:
         rep.add(OK, "log path", "scratch, job-id stamped")
-    elif "/scratch/brianx7/logs/" in t:
+    elif on_scratch:
         rep.add(WARN, "log path", "no %j; concurrent jobs will overwrite each other")
     else:
-        rep.add(FAIL, "log path", "not writing to /scratch/brianx7/logs/")
+        rep.add(FAIL, "log path", "logs should go to a /scratch/<user>/logs/ path")
 
-    # 9 — working directory
-    if "cd /scratch/brianx7/VoxTell-main" in t:
+    # 9 — working directory. Home is small and not meant for job I/O; the repo
+    # should be run from scratch.
+    if re.search(r"cd\s+/scratch/\S+/VoxTell-main", t):
         rep.add(OK, "working dir")
+    elif re.search(r"^\s*cd\s+", t, re.M):
+        rep.add(WARN, "working dir", "cd is not to a /scratch/<user>/VoxTell-main path")
     else:
-        rep.add(FAIL, "working dir", "no cd to /scratch/brianx7/VoxTell-main")
+        rep.add(FAIL, "working dir", "no cd; the job starts wherever sbatch was run")
 
     return target
 

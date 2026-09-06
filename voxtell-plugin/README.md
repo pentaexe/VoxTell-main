@@ -18,15 +18,20 @@ runs that check first and returns an error instead of a meaningless mask.
 Request: REFUSED
 
   The prompt asks for a structure in the brain (brain, brain tumor), but the
-  image is a CT study of the thorax. That structure is not in this field of
+  image is a CT study of the torso. That structure is not in this field of
   view, so any mask returned would be meaningless.
 
 Image
   modality : CT
-  region   : thorax
-  shape    : (512, 512, 406)   spacing: (0.82, 0.82, 1.25)
+  region   : torso
+  shape    : (406, 512, 512)   spacing: (1.25, 0.82, 0.82)
   - intensities reach -2048, consistent with Hounsfield units (air ~ -1000)
   - 25.0% of voxels below -700 HU (air)
+  - 508 mm of coverage spans thorax and abdomen together
+
+Prompt
+  region  : brain
+  matched : brain, brain tumor
 ```
 
 ## What each piece does
@@ -37,7 +42,7 @@ see how they differ:
 | Mechanism | What it is | Here |
 |---|---|---|
 | **Skill** | Instructions loaded into the model's context. Shapes *how it works* — workflow, protocol, standards. Advisory. | `skills/voxtell-inference`, `skills/nninteractive-inference`: cluster procedure, measurement rules, submission standards |
-| **MCP server** | A process exposing *callable tools* over JSON-RPC. Real code with real return values. Deterministic — it can refuse. | `mcp_server/server.py`: four tools, including the validation gate |
+| **MCP server** | A process exposing *callable tools* over JSON-RPC. Real code with real return values. Deterministic — it can refuse. | `mcp_server/server.py`: five tools, including the validation gate |
 | **Plugin** | A package bundling skills, MCP servers, commands and hooks into one installable unit | this directory |
 
 The distinction that matters: a skill can *tell* the model that a brain prompt
@@ -56,6 +61,7 @@ only Claude Code.
 | `voxtell_segment` | Text-prompted segmentation. Validates first; refuses on mismatch unless `force=true`. |
 | `nninteractive_segment` | Bounding-box prompted segmentation. No text, so no anatomy check needed. |
 | `list_models` | What is available and what each model can and cannot do. |
+| `setup` | Check the machine, report which VoxTell build is live, and fetch the checkpoint. |
 
 ## How validation works
 
@@ -74,11 +80,12 @@ note — a validator that blocks whatever it cannot classify is useless. Adjacen
 regions (thorax/abdomen, abdomen/pelvis) pass, since they routinely share a
 field of view.
 
-**Known limits.** The region heuristic is thresholds on one CT convention. It
-reads a FLARE abdominal CT with lung in frame as `thorax`, which the adjacency
-rule then lets through — correct outcome, imprecise label. It has not been
-tested on MR beyond the modality check, and the vocabulary covers common
-structures only.
+**Known limits.** The region heuristic is thresholds on one CT convention. A
+FLARE abdominal CT with lung in frame comes back as `torso` rather than
+`abdomen` — honest about the 508 mm field of view, but coarser than the label a
+radiologist would use, and the adjacency rule is what makes it behave. It has
+not been tested on MR beyond the modality check, and the vocabulary covers
+common structures only.
 
 ## Install
 
@@ -174,7 +181,7 @@ claude --plugin-dir ./voxtell-plugin
 ## Two transports: Claude Code and ChatGPT
 
 MCP's protocol semantics are identical on every transport — a transport only
-decides how messages are framed and delivered. So the same four tools are
+decides how messages are framed and delivered. So the same five tools are
 reachable two ways, and the routing code is written once.
 
 **stdio** (default) — newline-delimited JSON-RPC over the standard streams of a
@@ -216,13 +223,13 @@ Both branches verified end to end through the MCP layer on an RTX 4070 SUPER.
 ```
 Segmented 'brain'
   device      : cuda:0
-  image       : mni_icbm152_t1_tal_nlin_sym_09a.nii.gz  (197, 233, 189)
+  image       : mni_icbm152_t1_tal_nlin_sym_09a.nii.gz  (189, 233, 197)
   validation  : Prompt targets the brain, and the image looks like a brain study.
-  voxels      : 1,812,398
-  saved       : ...\mni_icbm152_t1_tal_nlin_sym_09a.nii__brain.npz
+  voxels      : 1,829,613
+  saved       : ...\mni_icbm152_t1_tal_nlin_sym_09a__brain.nii.gz  (aligned to the input image)
 ```
 
-That voxel count sits alongside the 1,828,296 measured for the same prompt in
+That voxel count is 0.07% from the 1,828,296 measured for the same prompt in
 the INT4 comparison, so the mask is real rather than an artifact of the plumbing.
 
 **Refused request** — FLARE abdominal CT with prompt `"brain tumor"`: returns

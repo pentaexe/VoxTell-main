@@ -24,8 +24,28 @@ import sys
 import traceback
 from pathlib import Path
 
+# stdout IS the JSON-RPC channel on stdio, so anything else written there
+# corrupts the stream. VoxTell's predictor announces its quantization mode with
+# a plain print(); that alone is enough to break a strict client mid-request.
+# Take a private handle for protocol writes before anything else can touch the
+# stream, then point sys.stdout at stderr, so library output still reaches the
+# logs but can never land on the wire. Do this before any heavy import, since an
+# import-time banner corrupts the stream just as thoroughly as one from inference.
+_PROTOCOL_OUT = sys.stdout
+sys.stdout = sys.stderr
+
 sys.path.insert(0, str(Path(__file__).parent))
 import validate as V  # noqa: E402
+
+# A Windows console defaults to cp1252, which cannot encode the em dashes and
+# arrows below. Without this the very first print raises UnicodeEncodeError and
+# the script produces no output at all — a confusing failure for something whose
+# whole job is to explain what is wrong. Degrade the characters, not the run.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 
 # ── Use the optimized voxtell, not the stock one from PyPI ────────────────────
@@ -49,18 +69,40 @@ if REPO_ROOT is not None:
     sys.path.insert(0, str(REPO_ROOT))
 
 
+# Markers of the optimized fork. These are additions to this repo's predictor,
+# absent from the DKFZ package on PyPI. Detect them directly rather than by file
+# path: an editable install can live anywhere, and a marketplace install may
+# place the plugin outside the checkout, in which case path matching says
+# "unrecognised" about a copy that is perfectly good.
+OPT_MARKERS = [
+    ("voxtell.inference.predictor", "_prompt_cache_path", "embedding cache"),
+    ("voxtell.inference.predictor", "_load_text_backbone", "INT4 text backbone"),
+    ("voxtell.utils.fast_preprocess", "numba_crop_to_nonzero", "Numba preprocessing"),
+]
+
+
 def voxtell_provenance() -> tuple[str, str]:
-    """Return (path, kind) for the voxtell package that will actually import."""
+    """Return (path, kind) for the voxtell that will actually import."""
     try:
         import voxtell
     except Exception as e:
         return "", f"not importable: {type(e).__name__}"
-    p = Path(voxtell.__file__).resolve()
-    if REPO_ROOT is not None and str(p).startswith(str(REPO_ROOT)):
-        return str(p.parent), "optimized (this repo)"
-    if "site-packages" in str(p):
-        return str(p.parent), "STOCK PyPI build — optimizations absent"
-    return str(p.parent), "unrecognised location"
+
+    path = str(Path(voxtell.__file__).resolve().parent)
+    missing = []
+    for mod, attr, label in OPT_MARKERS:
+        try:
+            m = __import__(mod, fromlist=[attr])
+            if not hasattr(m, attr):
+                missing.append(label)
+        except Exception:
+            missing.append(label)
+
+    if not missing:
+        return path, "optimized fork"
+    if len(missing) == len(OPT_MARKERS):
+        return path, "STOCK build — no optimizations present"
+    return path, f"PARTIAL — missing: {', '.join(missing)}"
 
 PROTOCOL_VERSION = "2024-11-05"
 NNI_WEIGHTS = os.environ.get("NNINTERACTIVE_WEIGHTS", "")
@@ -106,11 +148,11 @@ def resolve_model_dir(download: bool = False) -> tuple[str, str]:
 MODEL_DIR, MODEL_STATUS = resolve_model_dir()
 
 
-# ── Protocol plumbing ─────────────────────────────────────────────────────────
+# ── Protocol plumbing ────────────────────────────────────────────────────────
 
 def send(msg: dict) -> None:
-    sys.stdout.write(json.dumps(msg) + "\n")
-    sys.stdout.flush()
+    _PROTOCOL_OUT.write(json.dumps(msg) + "\n")
+    _PROTOCOL_OUT.flush()
 
 
 def reply(rid, result):
@@ -192,6 +234,7 @@ TOOLS = [
                 "image_path": {"type": "string"},
                 "prompt": {"type": "string", "description": "What to segment, e.g. 'the liver'"},
                 "force": {"type": "boolean", "description": "Run even if validation refuses. Default false.", "default": False},
+                "output_dir": {"type": "string", "description": "Where to write the mask. Defaults to VOXTELL_OUTPUT_DIR."},
             },
             "required": ["image_path", "prompt"],
         },
@@ -211,6 +254,7 @@ TOOLS = [
                     "description": "[[z_min,z_max],[y_min,y_max],[x_min,x_max]], max exclusive",
                     "items": {"type": "array", "items": {"type": "integer"}},
                 },
+                "output_dir": {"type": "string", "description": "Where to write the mask. Defaults to VOXTELL_OUTPUT_DIR."},
             },
             "required": ["image_path", "bbox"],
         },
@@ -257,7 +301,7 @@ def tool_setup(args):
     probe("torch", "torch", "pip install torch --index-url https://download.pytorch.org/whl/cu126")
 
     vpath, vkind = voxtell_provenance()
-    if "optimized" in vkind:
+    if vkind == "optimized fork":
         lines.append(f"  ok      {'voxtell build':<22} {vkind}")
     elif not vpath:
         ready = False
@@ -269,6 +313,7 @@ def tool_setup(args):
         lines.append(f"          {'':<22} the speedups measured here are not in that copy.")
         lines.append(f"          {'':<22} Fix: pip install -e /path/to/VoxTell-main")
     probe("nibabel", "nibabel", "pip install nibabel")
+    probe("nnunetv2", "nnunetv2", "pip install nnunetv2  (needed to read NIfTI in the trained orientation)")
     probe("transformers", "transformers", "pip install transformers")
 
     try:
@@ -318,7 +363,13 @@ def tool_check_request(args):
         "Image",
         f"  modality : {v.image.modality}",
         f"  region   : {v.image.region}",
-        f"  shape    : {v.image.shape}" + (f"   spacing: {v.image.spacing}" if v.image.spacing else ""),
+        # Report the volume only: the leading channel axis is an artifact of how
+        # the reader hands the array over, not something the caller chose. And
+        # spacing rounds to two decimals — 0.8203120231628418 mm is float noise
+        # dressed up as precision.
+        f"  shape    : {tuple(v.image.shape[-3:])}"
+        + (f"   spacing: {tuple(round(float(x), 2) for x in v.image.spacing)}"
+           if v.image.spacing else ""),
     ]
     for n in v.image.notes:
         lines.append(f"  - {n}")
@@ -347,6 +398,24 @@ def tool_voxtell_segment(args):
             is_error=True,
         )
 
+    # Refuse to run on a build without the optimizations. It would segment and
+    # return a plausible mask, so nothing downstream would reveal that the thing
+    # this plugin exists to deliver is absent. Someone who skips the setup tool
+    # should still not get a silent downgrade.
+    vpath, vkind = voxtell_provenance()
+    if vkind != "optimized fork":
+        return text_result(
+            f"REFUSED — the loaded VoxTell is not the optimized build.\n\n"
+            f"  build : {vkind}\n"
+            f"  from  : {vpath}\n\n"
+            "This copy would segment and return a plausible mask with none of the\n"
+            "measured optimizations, which is the kind of silent downgrade this\n"
+            "plugin exists to prevent.\n\n"
+            "Fix: pip install -e /path/to/VoxTell-main into the interpreter named by\n"
+            "voxtell_python, then run the setup tool to confirm.",
+            is_error=True,
+        )
+
     if not MODEL_DIR or not Path(MODEL_DIR).exists():
         return text_result(
             f"Validation passed ({v.reason})\n\n"
@@ -360,7 +429,8 @@ def tool_voxtell_segment(args):
     import torch
     from voxtell.inference.predictor import VoxTellPredictor
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    out_dir = Path(args["output_dir"]) if args.get("output_dir") else OUT_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     predictor = VoxTellPredictor(model_dir=MODEL_DIR, device=device)
@@ -384,11 +454,11 @@ def tool_voxtell_segment(args):
         # then overlays on the file the user passed in, rather than sitting in
         # the model's internal axis order.
         from nnunetv2.imageio.nibabel_reader_writer import NibabelIOWithReorient
-        out = OUT_DIR / f"{stem}.nii.gz"
+        out = out_dir / f"{stem}.nii.gz"
         NibabelIOWithReorient().write_seg(seg[0].astype(np.uint8), str(out), props)
         note = "aligned to the input image"
     else:
-        out = OUT_DIR / f"{stem}.npz"
+        out = out_dir / f"{stem}.npz"
         np.savez_compressed(out, mask=seg.astype(np.uint8))
         note = "npz input: mask is in the array's own axis order"
 
@@ -401,7 +471,7 @@ def tool_voxtell_segment(args):
     return text_result(
         f"Segmented '{prompt}'\n"
         f"  device      : {device}\n"
-        f"  image       : {Path(image_path).name}  {tuple(arr.shape)}\n"
+        f"  image       : {Path(image_path).name}  {tuple(arr.shape[-3:])}\n"
         f"  validation  : {v.reason}\n"
         f"  voxels      : {n_vox:,}\n"
         f"  saved       : {out}  ({note})"
@@ -442,8 +512,9 @@ def tool_nninteractive_segment(args):
     session.new_interaction_zoom_out_factors = [session.new_interaction_zoom_out_factors[-1]]
     session._predict()
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    out = OUT_DIR / f"{Path(args['image_path']).stem}__bbox.npz"
+    out_dir = Path(args["output_dir"]) if args.get("output_dir") else OUT_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out = out_dir / f"{Path(args['image_path']).stem}__bbox.npz"
     np.savez_compressed(out, mask=buf.numpy())
     return text_result(
         f"Segmented from bounding box {bbox}\n"

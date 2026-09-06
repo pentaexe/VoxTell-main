@@ -25,6 +25,16 @@ import subprocess
 import sys
 from pathlib import Path
 
+# A Windows console defaults to cp1252, which cannot encode the em dashes and
+# arrows below. Without this the very first print raises UnicodeEncodeError and
+# the script produces no output at all — a confusing failure for something whose
+# whole job is to explain what is wrong. Degrade the characters, not the run.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 PROBE = (
     "import json,sys\n"
     "out={'exe':sys.executable,'ver':sys.version.split()[0]}\n"
@@ -83,9 +93,11 @@ def probe(exe):
     for line in (r.stdout or "").splitlines():
         if line.startswith("PROBE"):
             return json.loads(line[5:])
-    # The Microsoft Store stub exits without output and usually returns 49.
+    # The Microsoft Store stub exits without output. It returns 49 when launched
+    # directly and 9009 through a shell that resolves it as a missing command;
+    # both mean the same thing, so name it either way.
     return {"exe": exe, "dead": f"no output, exit {r.returncode}"
-            + (" (Microsoft Store stub)" if r.returncode == 49 else "")}
+            + (" (Microsoft Store stub)" if r.returncode in (49, 9009) else "")}
 
 
 def main():
