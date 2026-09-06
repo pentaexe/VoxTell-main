@@ -14,19 +14,19 @@ You are helping with nnInteractive inference experiments on the Fir HPC cluster.
 
 ## Cluster access
 ```
-ssh brianx7@fir.alliancecan.ca
+ssh <your-alliance-username>@fir.alliancecan.ca
 # Password → type 1 → Duo push on iPhone
 ```
 
 ## Key paths
 | Resource | Path |
 |----------|------|
-| Checkpoint | `/scratch/brianx7/nnInteractive_weights/nnInteractive_v1.0` |
-| Validation data | `/scratch/brianx7/cvpr_val/3D_val_npz` |
-| Ground truth | `/scratch/brianx7/cvpr_val/3D_val_gt/3D_val_gt_interactive` |
-| Conda env | `source /scratch/brianx7/envs/nninteractive/bin/activate` |
-| Logs | `/scratch/brianx7/logs/` |
-| Project | `/scratch/brianx7/VoxTell-main` |
+| Checkpoint | `/scratch/$USER/nnInteractive_weights/nnInteractive_v1.0` |
+| Validation data | `/scratch/$USER/cvpr_val/3D_val_npz` |
+| Ground truth | `/scratch/$USER/cvpr_val/3D_val_gt/3D_val_gt_interactive` |
+| Conda env | `source /scratch/$USER/envs/nninteractive/bin/activate` |
+| Logs | `/scratch/$USER/logs/` |
+| Project | `/scratch/$USER/VoxTell-main` |
 
 ## Checkpoint rules (critical)
 - Always use `use_fold='all'` — the official CVPR 2025 checkpoint, DSC ~0.79
@@ -47,7 +47,9 @@ session = nnInteractiveInferenceSession(
     use_pinned_memory=True,
 )
 session.initialize_from_trained_model_folder(
-    '/scratch/brianx7/nnInteractive_weights/nnInteractive_v1.0',
+    # $USER expands in a shell, not in Python — spell it out here or you will
+    # create a directory literally named "$USER".
+    f"/scratch/{os.environ['USER']}/nnInteractive_weights/nnInteractive_v1.0",
     use_fold='all',
 )
 # To enable torch.compile:
@@ -66,7 +68,7 @@ session._predict()
 ## torch.compile requirements
 - `N_WARMUP=2` for the compiled session — warmup 1 triggers Triton compilation, warmup 2 stabilizes dispatch
 - Set `TORCHINDUCTOR_CACHE_DIR` **before** `import torch` (inductor reads it at import time)
-- Warm cache lives at `XDG_CACHE_HOME=/scratch/brianx7/cache`
+- Warm cache lives at `XDG_CACHE_HOME=/scratch/$USER/cache`
 
 ## Key verified results (fold='all', autozoom=ON, H100 MIG 3g.40gb, n=4 jobs)
 
@@ -96,7 +98,7 @@ Do not invoke a 0.005 pass/fail threshold — it is self-assigned, not from the 
 ```bash
 #!/bin/bash
 #SBATCH --job-name=nni_job
-#SBATCH --output=/scratch/brianx7/logs/nni_job_%j.out
+#SBATCH --output=/scratch/$USER/logs/nni_job_%j.out
 #SBATCH --gpus=nvidia_h100_80gb_hbm3_3g.40gb:1
 #SBATCH --mem=64G
 #SBATCH --ntasks=1
@@ -104,10 +106,10 @@ Do not invoke a 0.005 pass/fail threshold — it is self-assigned, not from the 
 #SBATCH --time=1:00:00
 #SBATCH --account=rrg-jma
 
-source /scratch/brianx7/envs/nninteractive/bin/activate
-export TORCH_HOME=/scratch/brianx7/torch_home
-export XDG_CACHE_HOME=/scratch/brianx7/cache
-cd /scratch/brianx7/VoxTell-main
+source /scratch/$USER/envs/nninteractive/bin/activate
+export TORCH_HOME=/scratch/$USER/torch_home
+export XDG_CACHE_HOME=/scratch/$USER/cache
+cd /scratch/$USER/VoxTell-main
 python -u <script>.py
 ```
 
@@ -116,9 +118,9 @@ python -u <script>.py
 # Always write scripts locally, then:
 git add <file> && git commit -m "..." && git push
 # On cluster:
-cd /scratch/brianx7/VoxTell-main && git pull
+cd /scratch/$USER/VoxTell-main && git pull
 sbatch <script>.sh
-tail -f /scratch/brianx7/logs/<jobname>_<jobid>.out
+tail -f /scratch/$USER/logs/<jobname>_<jobid>.out
 ```
 
 ## Common issues

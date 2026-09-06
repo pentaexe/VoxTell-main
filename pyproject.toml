@@ -1,6 +1,10 @@
 [project]
 name = "voxtell"
-version = "0.1.0"
+# Local version segment so this fork is distinguishable from the DKFZ package on
+# PyPI, which shares the name and the version number. Without it `pip show
+# voxtell` reports 0.1.0 either way, and an install that silently picked up the
+# stock build looks identical to a correct one.
+version = "0.1.0+optimized"
 requires-python = ">=3.10"
 description = "Free-Text Promptable Universal 3D Medical Image Segmentation"
 readme = "readme.md"
@@ -52,6 +56,20 @@ dependencies = [
     "einops",
     "tqdm",
     "transformers>=4.54.0,<5",
+    # fast_preprocess is imported by predictor.py, so without numba the predictor
+    # module cannot be imported at all — a clean install of this fork raised
+    # ModuleNotFoundError before segmenting anything. Nothing else pulls it in.
+    "numba>=0.59",
+    # Arrives transitively with nnunetv2 today. Declared because predictor.py
+    # imports it directly, and inheriting a dependency by luck is how it breaks.
+    "batchgenerators>=0.25",
+    # Not optional, despite looking it. The INT4 (NF4) text backbone is loaded
+    # through BitsAndBytesConfig, and _load_text_backbone catches any exception
+    # and falls back to FP16. Without these two the fork installs cleanly, passes
+    # every feature check, reports itself as the optimized build, and quietly
+    # serves FP16 — the measured INT4 numbers then do not apply to the run.
+    "accelerate>=0.26",
+    "bitsandbytes>=0.43",
 ]
 
 [project.urls]

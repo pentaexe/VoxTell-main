@@ -35,18 +35,39 @@ for _stream in (sys.stdout, sys.stderr):
     except Exception:
         pass
 
+# Ask the interpreter what it has, rather than judging by where the files sit.
+# Path matching looked reasonable and was wrong: an editable install can live
+# anywhere, and running this script from one checkout while the interpreter is
+# installed from another reported a perfectly good optimized build as "stock".
+# The markers below are additions in this fork, absent from the PyPI package.
 PROBE = (
     "import json,sys\n"
     "out={'exe':sys.executable,'ver':sys.version.split()[0]}\n"
     "try:\n"
     "    import voxtell,pathlib\n"
     "    out['voxtell']=str(pathlib.Path(voxtell.__file__).resolve())\n"
+    "    missing=[]\n"
+    "    for mod,attr,label in ((  'voxtell.inference.predictor','_prompt_cache_path','embedding cache'),\n"
+    "                           ('voxtell.inference.predictor','_load_text_backbone','INT4 text backbone'),\n"
+    "                           ('voxtell.utils.fast_preprocess','numba_crop_to_nonzero','Numba preprocessing')):\n"
+    "        try:\n"
+    "            m=__import__(mod,fromlist=[attr])\n"
+    "            if not hasattr(m,attr): missing.append(label)\n"
+    "        except Exception: missing.append(label)\n"
+    "    out['missing']=missing\n"
     "except Exception as e:\n"
     "    out['voxtell']=None; out['err']=type(e).__name__\n"
     "try:\n"
     "    import torch; out['torch']=torch.__version__; out['cuda']=torch.cuda.is_available()\n"
     "except Exception:\n"
     "    out['torch']=None\n"
+    # The INT4 backbone needs these at run time. Without them the fork still
+    # passes every feature check above and quietly serves FP16 instead.
+    "int4=[]\n"
+    "for m in ('bitsandbytes','accelerate'):\n"
+    "    try: __import__(m)\n"
+    "    except Exception: int4.append(m)\n"
+    "out['int4_missing']=int4\n"
     "print('PROBE'+json.dumps(out))\n"
 )
 
@@ -124,12 +145,23 @@ def main():
         if not v:
             print(f"  no voxtell {exe}  (python {info['ver']})")
             continue
-        is_repo = repo and str(Path(v)).startswith(str(repo))
-        kind = "OPTIMIZED (repo)" if is_repo else "stock PyPI build"
+        missing = info.get("missing", [])
+        optimized = not missing
+        if optimized:
+            kind = "OPTIMIZED"
+        elif len(missing) == 3:
+            kind = "stock PyPI build"
+        else:
+            kind = "PARTIAL, missing " + ", ".join(missing)
         cuda = "CUDA" if info.get("cuda") else "no CUDA"
-        print(f"  {'BEST    ' if is_repo else 'works   '} {exe}")
+        print(f"  {'BEST    ' if optimized else 'works   '} {exe}")
         print(f"            python {info['ver']}, {cuda}, voxtell: {kind}")
-        good.append((is_repo, bool(info.get("cuda")), exe))
+        print(f"            {v}")
+        int4_missing = info.get("int4_missing", [])
+        if optimized and int4_missing:
+            print(f"            INT4 unavailable: no {', '.join(int4_missing)}; "
+                  "the backbone will quietly run FP16")
+        good.append((optimized, bool(info.get("cuda")), exe))
 
     print()
     if not good:
@@ -137,20 +169,23 @@ def main():
         print()
         print("Install it from the repo checkout so you get the optimized build:")
         print(f"    pip install -e {repo or '/path/to/VoxTell-main'}")
-        print("    pip install nibabel accelerate huggingface_hub")
+        print("    pip install huggingface_hub")
         return 1
 
     good.sort(key=lambda t: (not t[0], not t[1]))
-    is_repo, has_cuda, best = good[0]
+    optimized, has_cuda, best = good[0]
     print("Set voxtell_python to:")
     print(f"    {best}")
-    if not is_repo:
+    if not optimized:
         print()
         print("  WARNING: that interpreter has the stock PyPI voxtell, which does not")
         print("  contain the INT4 backbone, embedding cache, Numba preprocessing or")
         print("  tile_step=0.75. It will segment, but none of the measured speedups")
         print("  apply. Install the repo copy instead:")
         print(f"      {best} -m pip install -e {repo or '/path/to/VoxTell-main'}")
+        print()
+        print("  Both distributions are called 'voxtell' and share a base version, so")
+        print("  check with: pip show voxtell   ->   0.1.0+optimized is this fork.")
     if not has_cuda:
         print()
         print("  WARNING: no CUDA on that interpreter. Inference will run on CPU and")

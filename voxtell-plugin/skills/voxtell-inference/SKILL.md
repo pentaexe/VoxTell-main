@@ -68,9 +68,9 @@ on a credential prompt. If one lands there anyway: `git status`, then
 A failed `cd` does not stop the commands after it, so a Windows path in a cluster
 block silently runs everything in the wrong directory.
 ```bash
-cd /scratch/brianx7/VoxTell-main && git pull
+cd /scratch/$USER/VoxTell-main && git pull
 sbatch <script>.sh
-squeue -u brianx7
+squeue -u $USER
 ```
 
 ### 6. When it finishes, report `seff <jobid>` alongside the result
@@ -82,8 +82,8 @@ Not as an afterthought — it is part of the result.
 
 State explicitly which of these you checked.
 
-1. **Right venv for the model.** VoxTell → `/home/brianx7/envs/voxtell`.
-   nnInteractive → `/scratch/brianx7/envs/nninteractive`. Wrong one does not fail
+1. **Right venv for the model.** VoxTell → `/home/$USER/envs/voxtell`.
+   nnInteractive → `/scratch/$USER/envs/nninteractive`. Wrong one does not fail
    at startup; it dies a minute in on `ModuleNotFoundError`.
 2. **`HF_HOME` exported.** Compute nodes have no internet. Without it
    `from_pretrained` fails after the job has already queued and started.
@@ -130,7 +130,7 @@ another wrong number.
 5. **Use a CT volume, not the MNI brain.** At 189×233×197 against a 192³ patch the
    brain yields 4 patches at *any* `tile_step`, and its arrays are too small for
    Numba to beat numpy. Neither optimization can act. Use
-   `/scratch/brianx7/cvpr_val/3D_val_npz/CT_*.npz`; those carry a `text_prompts`
+   `/scratch/$USER/cvpr_val/3D_val_npz/CT_*.npz`; those carry a `text_prompts`
    key, so read the prompt from the file rather than guessing the anatomy.
 
 6. **Repeat to n≥4 and quote the range.** Two runs of the same script have
@@ -147,15 +147,15 @@ another wrong number.
 
 **Cluster, VoxTell** — a venv, not conda, so there is no `conda activate`:
 ```bash
-source /home/brianx7/envs/voxtell/bin/activate
+source /home/$USER/envs/voxtell/bin/activate
 ```
 Has `transformers`, `positional_encodings`, `bitsandbytes`, `accelerate` 1.13.0.
 
-**Cluster, nnInteractive** — `/scratch/brianx7/envs/nninteractive/bin/activate`.
+**Cluster, nnInteractive** — `/scratch/$USER/envs/nninteractive/bin/activate`.
 Lacks `transformers` and `positional_encodings`; pointing a VoxTell job here cost
 two jobs on 2026-08-26.
 
-**Local Windows** — `C:\Users\brian\miniconda3\envs\voxtell\python.exe`.
+**Local Windows** — `the interpreter `doctor.py` reports (a real conda env, not the Store stub)`.
 CUDA torch 2.8.0+cu126 on an RTX 4070 SUPER, plus bitsandbytes and accelerate.
 Base miniconda is CPU-only torch and will not run benchmarks. Useful for a quick
 cross-check without queueing.
@@ -167,7 +167,7 @@ cross-check without queueing.
 ```bash
 #!/bin/bash
 #SBATCH --job-name=vox_<name>
-#SBATCH --output=/scratch/brianx7/logs/vox_<name>_%j.out
+#SBATCH --output=/scratch/$USER/logs/vox_<name>_%j.out
 #SBATCH --gpus=nvidia_h100_80gb_hbm3_3g.40gb:1
 #SBATCH --mem=16G                 # 32G for CT volumes
 #SBATCH --ntasks=1
@@ -175,13 +175,13 @@ cross-check without queueing.
 #SBATCH --time=1:00:00
 #SBATCH --account=rrg-jma
 
-source /home/brianx7/envs/voxtell/bin/activate
+source /home/$USER/envs/voxtell/bin/activate
 
-export TORCH_HOME=/scratch/brianx7/torch_home
-export XDG_CACHE_HOME=/scratch/brianx7/cache
-export HF_HOME=/scratch/brianx7/hf_cache
+export TORCH_HOME=/scratch/$USER/torch_home
+export XDG_CACHE_HOME=/scratch/$USER/cache
+export HF_HOME=/scratch/$USER/hf_cache
 
-cd /scratch/brianx7/VoxTell-main
+cd /scratch/$USER/VoxTell-main
 python -u <script>.py
 ```
 

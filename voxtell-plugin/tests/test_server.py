@@ -206,12 +206,75 @@ def main():
         check("stock build is refused", err is True and "REFUSED" in t, t[:150])
         check("the refusal says which build it found", "STOCK" in t, t[:150])
 
-        # 4. The real thing, if this machine has it.
+        # 4. nnInteractive. The weights are cluster-only, so the session itself is
+        #    stubbed — but the stub enforces the real API's shapes, which is
+        #    exactly what was wrong: the server passed a 5-D image and a 4-D
+        #    buffer, so this tool had never run to completion.
+        weights = tmp / "fake_weights" / "nnInteractive_v1.0"
+        (weights / "fold_all").mkdir(parents=True)
+        nni_env = {"NNINTERACTIVE_WEIGHTS": str(weights),
+                   "PYTHONPATH": str(HERE / "stub_nninteractive")}
+
+        res, _ = call("Rejects a malformed bounding box before loading anything",
+                      [("nninteractive_segment", {"image_path": str(mr), "bbox": [[0, 10], [0, 10]]}),
+                       ("nninteractive_segment", {"image_path": str(mr), "bbox": [[0, 10], [10, 5], [0, 10]]}),
+                       ("nninteractive_segment", {"image_path": str(mr), "bbox": [[0, 99999], [0, 10], [0, 10]]})],
+                      extra_env=nni_env, timeout=300)
+        t, err = body(res, 3)
+        check("wrong number of axes is caught", err is True and "three" in t, t[:120])
+        t, err = body(res, 4)
+        check("an empty axis is caught", err is True and "not below" in t, t[:120])
+        t, err = body(res, 5)
+        check("an out-of-bounds axis is caught", err is True and "only" in t, t[:120])
+
+        res, _ = call("Runs the bbox path with the API shapes the real session requires",
+                      [("nninteractive_segment", {"image_path": str(mr),
+                                                  "bbox": [[40, 120], [60, 160], [50, 150]],
+                                                  "output_dir": str(out)})],
+                      extra_env=nni_env, timeout=600)
+        t, err = body(res, 3)
+        if "needs a CUDA GPU" in t:
+            # The stub replaces the model, not the device: the session still
+            # allocates pinned memory, so this half needs a real GPU.
+            skipped.append("nnInteractive bbox path: no CUDA on this interpreter")
+            print("  skip  bbox segmentation (no CUDA here)")
+        else:
+            check("bbox segmentation completed", err is not True, t[:300])
+            if err is not True:
+                print("\n" + "\n".join("        " + l for l in t.splitlines()))
+                check("mask is written aligned, not as a raw buffer", ".nii.gz" in t and "aligned" in t)
+
+        # Missing weights must be a clean message, not a traceback.
+        res, _ = call("Says so plainly when the weights are not configured",
+                      [("nninteractive_segment", {"image_path": str(mr), "bbox": [[0, 10], [0, 10], [0, 10]]})],
+                      extra_env={"NNINTERACTIVE_WEIGHTS": ""}, timeout=300)
+        t, err = body(res, 3)
+        check("missing weights reported cleanly", err is True and "weights" in t.lower(), t[:120])
+
+        # 5. The FP16 downgrade that feature detection cannot see. The INT4 code
+        #    is part of the fork, so a build missing only bitsandbytes still
+        #    looks optimized and still reports itself as such — while serving
+        #    FP16. Simulate that by shadowing the package with a module that
+        #    raises on import.
+        blocker = tmp / "no_bnb"
+        blocker.mkdir()
+        (blocker / "bitsandbytes.py").write_text("raise ImportError('simulated: not installed')\n")
+        res, _ = call("Notices when INT4 will silently fall back to FP16",
+                      [("setup", {})], extra_env={"PYTHONPATH": str(blocker)}, timeout=300)
+        t, _ = body(res, 3)
+        check("setup reports the INT4 fallback", "bitsandbytes" in t and "FP16" in t, t[:200])
+
+        # 6. The real thing, if this machine has it.
         res, _ = call("Reports what is actually installed", [("list_models", {})], timeout=300)
         tools = [x["name"] for x in res.get(2, {}).get("result", {}).get("tools", [])]
         check("all five tools are exposed", len(tools) == 5, str(tools))
         t, _ = body(res, 3)
-        ready = "optimized fork" in t and "not found" not in t.lower()
+        # Read the checkpoint line specifically. Matching "NOT CONFIGURED" across
+        # the whole report also caught the nnInteractive weights line, which has
+        # nothing to do with whether VoxTell can run.
+        ckpt = next((l.split(":", 1)[1].strip() for l in t.splitlines()
+                     if l.strip().startswith("checkpoint")), "")
+        ready = "optimized fork" in t and ckpt and "NOT CONFIGURED" not in ckpt
         if not ready:
             skipped.append("end-to-end inference: needs the optimized build and the checkpoint")
             print("\n  skip  end-to-end inference (no optimized build or no checkpoint here)")

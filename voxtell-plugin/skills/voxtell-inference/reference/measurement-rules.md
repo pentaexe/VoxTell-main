@@ -67,7 +67,7 @@ The MNI brain is 189×233×197 against a 192³ patch: **4 patches at any
 `tile_step`**, and arrays too small for Numba to beat numpy. Neither optimization
 can act, so the measurement says nothing about either.
 
-Use `/scratch/brianx7/cvpr_val/3D_val_npz/CT_*.npz`. Those carry a
+Use `/scratch/$USER/cvpr_val/3D_val_npz/CT_*.npz`. Those carry a
 `text_prompts` key, so read the prompt from the file rather than guessing the
 anatomy.
 

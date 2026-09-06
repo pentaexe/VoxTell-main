@@ -89,20 +89,56 @@ def voxtell_provenance() -> tuple[str, str]:
         return "", f"not importable: {type(e).__name__}"
 
     path = str(Path(voxtell.__file__).resolve().parent)
-    missing = []
+    # A marker can be unavailable for two very different reasons, and conflating
+    # them sends people to the wrong fix. If the module imports but lacks the
+    # attribute, this really is the stock build and reinstalling helps. If the
+    # import itself fails, the code is very likely right and a dependency is
+    # missing — reinstalling the same package changes nothing. That case is real:
+    # predictor.py imports fast_preprocess, which needs numba, which nothing
+    # declared for a long time, so a clean install reported itself as stock.
+    absent, broken = [], {}
     for mod, attr, label in OPT_MARKERS:
         try:
             m = __import__(mod, fromlist=[attr])
             if not hasattr(m, attr):
-                missing.append(label)
-        except Exception:
-            missing.append(label)
+                absent.append(label)
+        except ModuleNotFoundError as e:
+            broken[e.name or mod] = label
+        except Exception as e:
+            broken[f"{mod} ({type(e).__name__})"] = label
 
+    if broken and not absent:
+        return path, ("optimizations unreadable — cannot import: "
+                      + ", ".join(sorted(broken)) + ". Install the missing package; "
+                      "reinstalling voxtell will not help")
+    missing = absent + [f"{k}?" for k in broken]
     if not missing:
         return path, "optimized fork"
     if len(missing) == len(OPT_MARKERS):
         return path, "STOCK build — no optimizations present"
     return path, f"PARTIAL — missing: {', '.join(missing)}"
+
+def int4_availability() -> str:
+    """Return "" if INT4 will really be used, else why it will not be.
+
+    Feature detection on the predictor cannot catch this. The INT4 code is part
+    of the fork, so a build missing only the runtime packages still looks like
+    the optimized one — and _load_text_backbone catches the ImportError and
+    serves FP16 anyway. The result is a correct mask produced by a slower path
+    than the one the measurements describe, with nothing to say so.
+    """
+    missing = []
+    for mod in ("bitsandbytes", "accelerate"):
+        try:
+            __import__(mod)
+        except Exception:
+            missing.append(mod)
+    if not missing:
+        return ""
+    return (f"INT4 unavailable: {', '.join(missing)} not installed. The text backbone "
+            "will silently run FP16, so it needs ~8 GB rather than ~2 GB and the "
+            "measured INT4 timings do not apply.")
+
 
 PROTOCOL_VERSION = "2024-11-05"
 
@@ -267,7 +303,10 @@ TOOLS = [
                 "image_path": {"type": "string"},
                 "bbox": {
                     "type": "array",
-                    "description": "[[z_min,z_max],[y_min,y_max],[x_min,x_max]], max exclusive",
+                    "description": ("[[z_min,z_max],[y_min,y_max],[x_min,x_max]], max exclusive, in voxels. "
+                                    "Coordinates are in the reoriented volume, whose axis order may differ "
+                                    "from the file as your viewer displays it. Run check_request first to "
+                                    "see the shape these coordinates are relative to."),
                     "items": {"type": "array", "items": {"type": "integer"}},
                 },
                 "output_dir": {"type": "string", "description": "Where to write the mask. Defaults to VOXTELL_OUTPUT_DIR."},
@@ -345,11 +384,15 @@ def tool_setup(args):
     except Exception:
         pass
 
-    try:
-        import accelerate  # noqa: F401
-        lines.append(f"  ok      {'accelerate':<22} required for INT4; without it the backbone silently uses FP16")
-    except ImportError:
-        lines.append(f"  warn    {'accelerate':<22} missing: INT4 will silently fall back to FP16. pip install accelerate")
+    # Both packages, not just accelerate: BitsAndBytesConfig needs bitsandbytes
+    # too, and pyproject did not declare either for a long time, so an install
+    # that followed the README to the letter still served FP16.
+    int4 = int4_availability()
+    if int4:
+        lines.append(f"  warn    {'INT4 backbone':<22} {int4.split(':', 1)[1].strip()}")
+        lines.append(f"          {'':<22} pip install bitsandbytes accelerate")
+    else:
+        lines.append(f"  ok      {'INT4 backbone':<22} bitsandbytes and accelerate present")
 
     if args.get("download") and MODEL_STATUS == "missing":
         lines.append("\n  Downloading checkpoint from Hugging Face (~1.7 GB, this takes a while)...")
@@ -488,6 +531,12 @@ def tool_voxtell_segment(args):
         warn = "\n\nNOTE: validation was overridden with force=true. Treat this mask as meaningless.\n"
     if n_vox == 0:
         warn += "\nThe mask is empty — the model found nothing matching this prompt."
+    # The mask is still correct on FP16; what is wrong is any speed claim made
+    # about the run. Say so here rather than only in setup, which a caller who
+    # went straight to segmenting will never have seen.
+    int4 = int4_availability()
+    if int4:
+        warn += f"\n\nNOTE: {int4}"
 
     return text_result(
         f"Segmented '{prompt}'\n"
@@ -500,6 +549,35 @@ def tool_voxtell_segment(args):
     )
 
 
+def validate_bbox(bbox, volume) -> str:
+    """Return an error message for an unusable bounding box, or "" if it is fine.
+
+    Checked here rather than left to nnInteractive, which fails deep inside a
+    zoom-out step with an error that says nothing about the box. The common
+    mistakes are a box in the wrong axis order and a box read off a viewer that
+    shows the file's original orientation rather than the reoriented volume.
+    """
+    if not isinstance(bbox, (list, tuple)) or len(bbox) != 3:
+        return (f"bbox must be three [min, max] pairs, one per axis, got {bbox!r}.\n"
+                f"This image is {tuple(volume)} after reorientation.")
+    for i, pair in enumerate(bbox):
+        if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+            return f"bbox axis {i} must be a [min, max] pair, got {pair!r}."
+        try:
+            lo, hi = int(pair[0]), int(pair[1])
+        except (TypeError, ValueError):
+            return f"bbox axis {i} must be two integers, got {pair!r}."
+        if lo >= hi:
+            return (f"bbox axis {i} is empty: min {lo} is not below max {hi} "
+                    "(max is exclusive).")
+        if lo < 0 or hi > volume[i]:
+            return (f"bbox axis {i} spans [{lo}, {hi}) but the image is only "
+                    f"{volume[i]} voxels on that axis.\n"
+                    f"Full extent is {tuple(volume)}. Note this is the volume after "
+                    "reorientation, which may not match the axis order your viewer shows.")
+    return ""
+
+
 def tool_nninteractive_segment(args):
     if not NNI_WEIGHTS or not Path(NNI_WEIGHTS).exists():
         return text_result(
@@ -509,10 +587,32 @@ def tool_nninteractive_segment(args):
         )
     import numpy as np
     import torch
-    from nnInteractive.inference.inference_session import nnInteractiveInferenceSession
 
-    arr, _, _ = load_image(args["image_path"])
+    arr, _spacing, props = load_image(args["image_path"])
+    # load_image always returns (C,H,W,D). nnInteractive wants the image with
+    # that channel axis and the target buffer WITHOUT it — see the verified
+    # cluster script, which passes image[None] because its npz array is bare 3-D.
+    # Feeding arr[None] here instead produced a 5-D image and a 4-D buffer, and
+    # this tool could never have run.
+    volume = arr.shape[-3:]
+
+    # Check the box before the hardware. Validation costs nothing and needs no
+    # device, and a caller with a malformed box should hear about the box rather
+    # than about a GPU they may not need to care about yet.
+    bad = validate_bbox(args.get("bbox"), volume)
+    if bad:
+        return text_result(bad, is_error=True)
     bbox = [[int(a), int(b)] for a, b in args["bbox"]]
+
+    if not torch.cuda.is_available():
+        return text_result(
+            "nnInteractive needs a CUDA GPU and none is visible to this interpreter.\n"
+            "Unlike VoxTell there is no usable CPU path here: the session allocates "
+            "pinned memory and expects a device.",
+            is_error=True,
+        )
+
+    from nnInteractive.inference.inference_session import nnInteractiveInferenceSession
 
     session = nnInteractiveInferenceSession(
         device=torch.device("cuda", 0),
@@ -522,10 +622,11 @@ def tool_nninteractive_segment(args):
         do_autozoom=True,
         use_pinned_memory=True,
     )
+    # fold='all' is not a default worth changing: fold=0 scores about 0.33 DSC.
     session.initialize_from_trained_model_folder(NNI_WEIGHTS, use_fold="all")
 
-    buf = torch.zeros(arr.shape, dtype=torch.uint8, device="cpu")
-    session.set_image(arr[None].astype(np.float32))
+    buf = torch.zeros(volume, dtype=torch.uint8, device="cpu")
+    session.set_image(arr.astype(np.float32))
     session.set_target_buffer(buf)
     session.reset_interactions()
     session.add_bbox_interaction(bbox, include_interaction=True, run_prediction=False)
@@ -533,14 +634,29 @@ def tool_nninteractive_segment(args):
     session.new_interaction_zoom_out_factors = [session.new_interaction_zoom_out_factors[-1]]
     session._predict()
 
+    seg = buf.numpy().astype(np.uint8)
     out_dir = Path(args["output_dir"]) if args.get("output_dir") else OUT_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
-    out = out_dir / f"{Path(args['image_path']).stem}__bbox.npz"
-    np.savez_compressed(out, mask=buf.numpy())
+    stem = f"{Path(args['image_path']).name.split('.')[0]}__bbox"
+
+    # Write back through the same reader, as the VoxTell path does. Saving the
+    # raw buffer instead leaves the mask in the reader's internal axis order, so
+    # it will not overlay on the file the caller passed in.
+    if props is not None:
+        from nnunetv2.imageio.nibabel_reader_writer import NibabelIOWithReorient
+        out = out_dir / f"{stem}.nii.gz"
+        NibabelIOWithReorient().write_seg(seg, str(out), props)
+        note = "aligned to the input image"
+    else:
+        out = out_dir / f"{stem}.npz"
+        np.savez_compressed(out, mask=seg)
+        note = "npz input: mask is in the array's own axis order"
+
     return text_result(
         f"Segmented from bounding box {bbox}\n"
-        f"  voxels : {int((buf.numpy() > 0).sum()):,}\n"
-        f"  saved  : {out}"
+        f"  image  : {Path(args['image_path']).name}  {tuple(volume)}\n"
+        f"  voxels : {int((seg > 0).sum()):,}\n"
+        f"  saved  : {out}  ({note})"
     )
 
 

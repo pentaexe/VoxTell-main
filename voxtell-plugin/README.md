@@ -118,15 +118,31 @@ repository, so a fresh install always needs this once.
 ```bash
 git clone https://github.com/pentaexe/VoxTell-main
 cd VoxTell-main
-pip install -e .                                  # the optimized build
-pip install nibabel accelerate huggingface_hub
 pip install torch --index-url https://download.pytorch.org/whl/cu126
+pip install -e .                                  # the optimized build
+pip install huggingface_hub
 ```
 
 A CUDA GPU is effectively required; CPU inference on a 3-D volume takes minutes.
 
-`accelerate` looks optional and is not: without it VoxTell's INT4 loader catches
-the ImportError and serves FP16 while still logging INT4.
+Both packages the fork shares a name with PyPI over are worth checking after
+install:
+
+```bash
+pip show voxtell        # must read 0.1.0+optimized, not 0.1.0
+```
+
+The two distributions have the same name *and* the same base version, so before
+the local version marker was added there was no way to tell from `pip` which one
+you had. That is how a clean machine ended up on the stock build.
+
+`accelerate` and `bitsandbytes` are dependencies now, but they were not always,
+and the failure they cause is worth knowing: `_load_text_backbone` builds a
+`BitsAndBytesConfig`, catches **any** exception, and falls back to FP16. Without
+those two the fork installs cleanly, passes every feature check, reports itself
+as the optimized build, and quietly serves FP16. Feature detection cannot see
+this — the INT4 code is present, only the runtime is missing — so `setup` and
+every `voxtell_segment` result check for it separately and say so.
 
 ### Configuration
 
@@ -236,5 +252,27 @@ the INT4 comparison, so the mask is real rather than an artifact of the plumbing
 `isError: true`, and no model is loaded and no GPU touched. The refusal happens
 before any compute.
 
-`nninteractive_segment` has not been exercised — it needs the weights directory,
-which lives on the cluster.
+**`nninteractive_segment`** has not run against the real weights, which live on
+the cluster. It is exercised in the test suite against a stand-in session that
+enforces the real API's shapes, and that is what caught the bug that had made
+this tool non-functional since it was written: `load_image` returns `(C,H,W,D)`,
+so passing `arr[None]` handed the session a 5-D image and a 4-D target buffer.
+Every call raised. Bounding-box validation, the missing-weights path and the
+aligned write are covered the same way. The model itself still needs a run on
+the cluster before any accuracy claim.
+
+## Tests
+
+```bash
+python tests/test_server.py
+```
+
+Drives the server over real stdio the way a client does. The volumes are
+synthesized to sit either side of the validator's thresholds, so it needs no
+data files; the one test that wants the real checkpoint skips itself when it is
+absent.
+
+Every test asserts that stdout parses as JSON. On stdio, stdout *is* the
+JSON-RPC channel, and VoxTell's predictor announces its quantization mode with a
+bare `print()` — one line that lands in the middle of the protocol stream.
+Claude Code tolerated it, which is exactly why it needed a test.

@@ -3,7 +3,7 @@
 ## Access
 
 ```bash
-ssh brianx7@fir.alliancecan.ca
+ssh <your-alliance-username>@fir.alliancecan.ca
 # password, then type 1, then approve the Duo push
 ```
 
@@ -11,20 +11,20 @@ ssh brianx7@fir.alliancecan.ca
 
 | Resource | Path |
 |---|---|
-| Cluster project | `/scratch/brianx7/VoxTell-main` |
-| Local project | `c:\Users\brian\OneDrive\Desktop\Code\VoxTell-main` |
-| Logs | `/scratch/brianx7/logs/` |
-| CVPR validation images | `/scratch/brianx7/cvpr_val/3D_val_npz` |
-| CVPR ground truth | `/scratch/brianx7/cvpr_val/3D_val_gt/3D_val_gt_interactive` |
-| nnInteractive weights | `/scratch/brianx7/nnInteractive_weights/nnInteractive_v1.0` |
+| Cluster project | `/scratch/$USER/VoxTell-main` |
+| Local project | `your local checkout of this repo` |
+| Logs | `/scratch/$USER/logs/` |
+| CVPR validation images | `/scratch/$USER/cvpr_val/3D_val_npz` |
+| CVPR ground truth | `/scratch/$USER/cvpr_val/3D_val_gt/3D_val_gt_interactive` |
+| nnInteractive weights | `/scratch/$USER/nnInteractive_weights/nnInteractive_v1.0` |
 
 ## Environments
 
 These are venvs, not conda. There is no `conda activate` on Fir.
 
 ```bash
-source /home/brianx7/envs/voxtell/bin/activate            # VoxTell jobs
-source /scratch/brianx7/envs/nninteractive/bin/activate   # nnInteractive jobs
+source /home/$USER/envs/voxtell/bin/activate            # VoxTell jobs
+source /scratch/$USER/envs/nninteractive/bin/activate   # nnInteractive jobs
 ```
 
 **Getting this wrong does not fail at startup.** A VoxTell job pointed at the
@@ -75,7 +75,7 @@ and it does not draw on the lab's 10 RGU-years.
 ```bash
 #!/bin/bash
 #SBATCH --job-name=vox_<name>
-#SBATCH --output=/scratch/brianx7/logs/vox_<name>_%j.out
+#SBATCH --output=/scratch/$USER/logs/vox_<name>_%j.out
 #SBATCH --gpus=nvidia_h100_80gb_hbm3_3g.40gb:1
 #SBATCH --mem=16G                 # 32G for CT volumes
 #SBATCH --ntasks=1
@@ -83,13 +83,13 @@ and it does not draw on the lab's 10 RGU-years.
 #SBATCH --time=1:00:00
 #SBATCH --account=rrg-jma
 
-source /home/brianx7/envs/voxtell/bin/activate
+source /home/$USER/envs/voxtell/bin/activate
 
-export TORCH_HOME=/scratch/brianx7/torch_home
-export XDG_CACHE_HOME=/scratch/brianx7/cache
-export HF_HOME=/scratch/brianx7/hf_cache   # compute nodes have no internet
+export TORCH_HOME=/scratch/$USER/torch_home
+export XDG_CACHE_HOME=/scratch/$USER/cache
+export HF_HOME=/scratch/$USER/hf_cache   # compute nodes have no internet
 
-cd /scratch/brianx7/VoxTell-main
+cd /scratch/$USER/VoxTell-main
 python -u <script>.py
 ```
 
@@ -102,10 +102,10 @@ python scripts/validate_job.py <script>.sh
 ## Submitting
 
 ```bash
-cd /scratch/brianx7/VoxTell-main && git pull
+cd /scratch/$USER/VoxTell-main && git pull
 sbatch <script>.sh
-squeue -u brianx7
-tail -f /scratch/brianx7/logs/vox_<name>_<jobid>.out
+squeue -u $USER
+tail -f /scratch/$USER/logs/vox_<name>_<jobid>.out
 seff <jobid>                       # report this with every result
 ```
 
