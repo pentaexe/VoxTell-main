@@ -96,6 +96,31 @@ In Claude Code:
 /plugin install voxtell-seg@voxtell
 ```
 
+Installing opens a configuration screen. **Set `voxtell_python` there** — the
+plugin's one hard requirement. Skipping it leaves the default `python3`, which
+on Windows is the Microsoft Store stub and exits without running, so the server
+never starts.
+
+That screen is easy to click past, so both of these do the same job without it:
+
+```bash
+# from a shell, at install time
+claude plugin install voxtell-seg@voxtell \
+  --config voxtell_python=/path/to/env/bin/python \
+  --config voxtell_model_dir=/path/to/voxtell_v1.1
+```
+
+```
+# from inside Claude Code, any time afterwards
+/plugin configure voxtell-seg@voxtell
+```
+
+Either way the value lands in `pluginConfigs` in `~/.claude/settings.json`.
+
+**If no tools appear, run `/mcp`.** It shows the server's status and the exact
+command it tried to launch. `Command: python3` means `voxtell_python` was never
+set to your environment's interpreter, which is the single most common cause.
+
 Then, in any conversation:
 
 > Run the setup tool with download true
