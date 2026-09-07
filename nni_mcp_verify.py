@@ -210,8 +210,19 @@ def main():
         valid = [s for s in scores if s == s]  # drop NaN
         mean = sum(valid) / len(valid) if valid else float("nan")
         print(f"\nmean DSC over {len(valid)} box(es): {mean:.4f}")
-        print("reference: fold='all' scores about 0.79 on this data; "
-              "about 0.33 means fold=0 weights, which is not a valid baseline.")
+        print()
+        print("Read this as a smoke test, not a benchmark. It is a few boxes from the")
+        print("first cases that had ground truth, which are large abdominal organs and")
+        print("score well above any full-set average. Do NOT compare it against the 0.79")
+        print("that fold='all' scores over all 881 cases: that number spans small and")
+        print("difficult structures this sample avoids, so a higher figure here is the")
+        print("expected shape of the result, not an improvement on it.")
+        print()
+        print("What it does establish: the MCP path returns real, correctly placed masks,")
+        print("and the weights are fold='all' rather than fold=0, which scores about 0.33.")
+        # A floor, not a target. It sits well above the ~0.33 that fold=0 weights
+        # produce and well below anything this sample should reach, so it catches
+        # the failure that matters without implying the number means more.
         verdict = 0.55 <= mean if valid else False
         print("\n" + ("VERIFIED — the MCP path produces masks of the expected quality."
                       if verdict else

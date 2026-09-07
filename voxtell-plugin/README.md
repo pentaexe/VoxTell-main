@@ -252,14 +252,31 @@ the INT4 comparison, so the mask is real rather than an artifact of the plumbing
 `isError: true`, and no model is loaded and no GPU touched. The refusal happens
 before any compute.
 
-**`nninteractive_segment`** has not run against the real weights, which live on
-the cluster. It is exercised in the test suite against a stand-in session that
-enforces the real API's shapes, and that is what caught the bug that had made
-this tool non-functional since it was written: `load_image` returns `(C,H,W,D)`,
-so passing `arr[None]` handed the session a 5-D image and a 4-D target buffer.
-Every call raised. Bounding-box validation, the missing-weights path and the
-aligned write are covered the same way. The model itself still needs a run on
-the cluster before any accuracy claim.
+**`nninteractive_segment`** is verified against the real `fold='all'` weights on
+an H100, driven through the MCP server the same way a client would
+(`nni_mcp_verify.sh`):
+
+```
+case                         box label     voxels     DSC
+CT_AMOS_amos_0018.npz          0     1     65,632  0.9617
+CT_AMOS_amos_0018.npz          1     2     47,861  0.9045
+CT_AMOS_amos_0021.npz          0     1    190,964  0.9563
+CT_AMOS_amos_0021.npz          1     2     45,095  0.9339
+
+mean DSC over 4 box(es): 0.9391
+```
+
+That is a smoke test, not a benchmark, and it is **not** comparable with the
+0.79 `fold='all'` scores across all 881 cases — these are four large abdominal
+organs, which score high anywhere. What it establishes is that the MCP path
+returns correctly placed masks and the weights really are `fold='all'` rather
+than `fold=0`, which scores about 0.33.
+
+Getting there took fixing a bug that had made this tool non-functional since it
+was written: `load_image` returns `(C,H,W,D)`, so passing `arr[None]` handed the
+session a 5-D image and a 4-D target buffer, and every call raised. The test
+suite catches that without the weights, using a stand-in session that enforces
+the shapes the verified cluster script uses.
 
 ## Tests
 
