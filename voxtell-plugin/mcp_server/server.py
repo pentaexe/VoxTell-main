@@ -366,12 +366,23 @@ def tool_setup(args):
     elif not vpath:
         ready = False
         lines.append(f"  MISSING {'voxtell':<22} pip install -e . from the VoxTell-main checkout")
+    elif vkind.startswith("optimizations unreadable"):
+        # A different problem with a different fix. Saying "the speedups are not
+        # in that copy" here would be wrong — they are, we just cannot see them
+        # past a missing import — and telling someone to reinstall voxtell sends
+        # them round a loop that cannot resolve.
+        ready = False
+        lines.append(f"  BLOCKED {'voxtell build':<22} cannot tell: {vkind.split(':', 1)[1].strip()}")
+        lines.append(f"          {'':<22} loaded from {vpath}")
+        lines.append(f"          {'':<22} The build is probably fine; a dependency is missing.")
+        lines.append(f"          {'':<22} Install it, then run setup again.")
     else:
         ready = False
         lines.append(f"  WRONG   {'voxtell build':<22} {vkind}")
         lines.append(f"          {'':<22} loaded from {vpath}")
         lines.append(f"          {'':<22} the speedups measured here are not in that copy.")
         lines.append(f"          {'':<22} Fix: pip install -e /path/to/VoxTell-main")
+        lines.append(f"          {'':<22} Confirm with: pip show voxtell -> 0.1.0+optimized")
     probe("nibabel", "nibabel", "pip install nibabel")
     probe("nnunetv2", "nnunetv2", "pip install nnunetv2  (needed to read NIfTI in the trained orientation)")
     probe("transformers", "transformers", "pip install transformers")
