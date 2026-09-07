@@ -164,3 +164,11 @@ Thumbs.db
 voxtell_seg.onnx
 mcp_segmentations/
 mcp_segmentations/
+
+# Local Claude Code MCP config. Machine-specific by nature — it names an
+# absolute interpreter path and checkpoint directory — so it must not ship.
+# Anyone who clones the repo and opens it in Claude Code would otherwise have
+# this fire with another machine's paths, fail to launch, and get the silent
+# "plugin present, no tools" symptom. Install the plugin instead; the plugin's
+# own .mcp.json resolves its paths from user config.
+.mcp.json
