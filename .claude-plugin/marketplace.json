@@ -1,5 +1,6 @@
 {
   "name": "voxtell",
+  "description": "3-D medical image segmentation tools from the Peter Munk Cardiac Centre AI team: VoxTell text-prompted and nnInteractive bbox-prompted, with a validation gate that refuses anatomically impossible requests before any GPU time is spent.",
   "owner": {
     "name": "Brian Xiao",
     "url": "https://github.com/pentaexe/VoxTell-main"
