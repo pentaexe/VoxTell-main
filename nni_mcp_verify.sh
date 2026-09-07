@@ -6,7 +6,10 @@
 #SBATCH --ntasks=1
 #SBATCH --mem=48G
 #SBATCH --time=1:00:00
-#SBATCH --output=/scratch/$USER/logs/nni_mcp_verify_%j.out
+# %u, not $USER: SBATCH directives are read by SLURM before any shell runs, so a
+# shell variable here stays literal, SLURM cannot open the file, and the job
+# fails on submission with no log to explain why. %j is the job id, %u the user.
+#SBATCH --output=/scratch/%u/logs/nni_mcp_verify_%j.out
 
 # Verify nninteractive_segment end to end through the MCP server, against the
 # real fold='all' weights, and score the result against ground truth.

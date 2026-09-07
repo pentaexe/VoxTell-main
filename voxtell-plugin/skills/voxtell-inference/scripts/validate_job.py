@@ -158,6 +158,22 @@ def check_sh(path: Path, rep: Report):
     else:
         rep.add(FAIL, "working dir", "no cd; the job starts wherever sbatch was run")
 
+    # 10 — shell variables in #SBATCH directives. SLURM reads these lines before
+    # any shell runs, so $USER stays literal: it cannot open the file, the job
+    # dies at submission, and there is no log to say why — the failure looks like
+    # the job never ran. Costs a queue wait to discover. Use %u and %j.
+    bad_vars = []
+    for line in t.splitlines():
+        s = line.strip()
+        if s.startswith("#SBATCH") and re.search(r"\$\{?\w+", s):
+            bad_vars.append(s)
+    if bad_vars:
+        rep.add(FAIL, "sbatch directives",
+                f"shell variable in {len(bad_vars)} directive(s); SLURM does not expand it. "
+                f"Use %u for the user and %j for the job id. First: {bad_vars[0][:60]}")
+    else:
+        rep.add(OK, "sbatch directives", "no shell variables where SLURM cannot expand them")
+
     return target
 
 
