@@ -143,10 +143,33 @@ repository, so a fresh install always needs this once.
 ```bash
 git clone https://github.com/pentaexe/VoxTell-main
 cd VoxTell-main
-pip install torch --index-url https://download.pytorch.org/whl/cu126
-pip install -e .                                  # the optimized build
+
+python3.12 -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+
+pip install "torch<2.9" --index-url https://download.pytorch.org/whl/cu126
+pip install -e .                                        # the optimized build
 pip install huggingface_hub
 ```
+
+Then confirm both packages are the ones you meant to get:
+
+```bash
+pip show voxtell                                  # 0.1.0+optimized, not 0.1.0
+python -c "import torch; print(torch.__version__)"   # must end in +cu126
+```
+
+**The venv is not optional, and neither is the version.** VoxTell pins
+`torch<2.9`, and torch below 2.9 publishes no wheels for Python 3.14. A machine
+whose system `python3` is 3.14 — a current Ubuntu, for instance — fails while
+resolving torch and says nothing about the interpreter being the cause. Use
+3.10, 3.11, 3.12 or 3.13.
+
+**The quotes around `"torch<2.9"` matter just as much.** Without them pip takes
+the newest build on that index, currently `2.14.0+cu126`, which violates the
+`<2.9` pin. `pip install -e .` then uninstalls it and re-resolves torch from
+PyPI instead — so you end up on a plain `2.8.0` with the `+cu126` build silently
+gone, and on Windows that is CPU-only. The `torch.__version__` check above is
+what catches it.
 
 A CUDA GPU is effectively required; CPU inference on a 3-D volume takes minutes.
 

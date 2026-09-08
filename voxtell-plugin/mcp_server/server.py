@@ -389,9 +389,20 @@ def tool_setup(args):
 
     try:
         import torch
-        lines.append(f"  {'ok     ' if torch.cuda.is_available() else 'warn   '} "
-                     f"{'CUDA':<22} "
-                     f"{torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'not available; CPU will be very slow'}")
+        if torch.cuda.is_available():
+            lines.append(f"  ok      {'CUDA':<22} {torch.cuda.get_device_name(0)}")
+        elif torch.version.cuda is None:
+            # A CPU-only wheel, which is a different problem from a missing GPU
+            # and has a different fix. This is what you get when the torch pin
+            # is left unquoted: pip takes the newest build off the CUDA index,
+            # `pip install -e .` finds it violates torch<2.9, and re-resolves
+            # from PyPI — which on Windows is CPU-only.
+            lines.append(f"  warn    {'CUDA':<22} torch {torch.__version__} is a CPU-only build")
+            lines.append(f"          {'':<22} pip install \"torch<2.9\" --index-url "
+                         "https://download.pytorch.org/whl/cu126")
+        else:
+            lines.append(f"  warn    {'CUDA':<22} torch is built for CUDA {torch.version.cuda} "
+                         "but no GPU is visible; check the driver")
     except Exception:
         pass
 
