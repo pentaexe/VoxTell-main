@@ -219,6 +219,12 @@ def text_result(s: str, is_error: bool = False):
     return {"content": [{"type": "text", "text": s}], "isError": is_error}
 
 
+def _wrap(s: str, width: int = 76) -> list:
+    """Wrap to fixed-width lines so long notes stay readable in a terminal."""
+    import textwrap
+    return textwrap.wrap(s, width) or [""]
+
+
 # ── Image loading ─────────────────────────────────────────────────────────────
 
 def load_image(path: str):
@@ -462,6 +468,11 @@ def tool_check_request(args):
     lines += ["", "Prompt", f"  region  : {v.prompt_region}"]
     if v.matched_terms:
         lines.append(f"  matched : {', '.join(v.matched_terms[:5])}")
+    # Acquisition geometry the model handles badly. Separate from the anatomy
+    # verdict: the request is legitimate, the mask is just less trustworthy, and
+    # that is worth knowing before the number is written down rather than after.
+    for c in v.caveats:
+        lines += ["", "Caveat", *(f"  {line}" for line in _wrap(c, 76))]
     return text_result("\n".join(lines), is_error=not v.allowed)
 
 
@@ -559,6 +570,10 @@ def tool_voxtell_segment(args):
     int4 = int4_availability()
     if int4:
         warn += f"\n\nNOTE: {int4}"
+    # Repeated here and not only in check_request: a caller can reach this tool
+    # directly, and this is the output a DSC gets written next to.
+    for c in v.caveats:
+        warn += "\n\nNOTE: " + c
 
     return text_result(
         f"Segmented '{prompt}'\n"

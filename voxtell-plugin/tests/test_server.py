@@ -79,6 +79,25 @@ def write_volumes(dest: Path):
     return ct_path, mr_path
 
 
+def write_thick_slice_ct(dest: Path) -> Path:
+    """A torso CT acquired at 5 mm, the geometry the two failing cases shared."""
+    import nibabel as nib
+    import numpy as np
+
+    rng = np.random.default_rng(1)
+    shape = (80, 256, 256)                  # 80 slices x 5 mm = 400 mm of coverage
+    ct = np.full(shape, -1000.0, dtype=np.float32)
+    zz, yy, xx = np.ogrid[: shape[0], : shape[1], : shape[2]]
+    body = ((yy - 128) ** 2 + (xx - 128) ** 2) < 100 ** 2
+    ct[np.broadcast_to(body, shape)] = 40.0
+    lungs = ((yy - 128) ** 2 + (xx - 110) ** 2) < 45 ** 2
+    ct[np.broadcast_to(lungs, shape) & (zz < 35)] = -850.0
+    ct += rng.normal(0, 8, shape).astype(np.float32)
+    path = dest / "synthetic_thick_5mm_ct.nii.gz"
+    nib.save(nib.Nifti1Image(ct, np.diag([5.0, 1.5, 1.5, 1.0])), str(path))
+    return path
+
+
 def write_stock_voxtell(dest: Path) -> Path:
     """A voxtell package with the right module names and none of the optimizations.
 
@@ -190,6 +209,21 @@ def main():
         check("brain prompt on a brain MR is allowed", "REFUSED" not in t, t[:100])
         t, _ = body(res, 4)
         check("liver prompt on a torso CT is allowed", "REFUSED" not in t, t[:100])
+
+        # 2b. Thick-slice scans. VoxTell v1.1 does not resample, so a 5 mm
+        #     acquisition scores far below a 1 mm one on the same task. That is a
+        #     property of the model, not of the request, so it warns rather than
+        #     refuses — but it must warn, because the mask still looks plausible.
+        thick = write_thick_slice_ct(tmp)
+        res, _ = call("Warns about thick slices without refusing the request",
+                      [("check_request", {"image_path": str(thick), "prompt": "liver tumor"}),
+                       ("check_request", {"image_path": str(ct), "prompt": "liver tumor"})],
+                      timeout=300)
+        t, err = body(res, 3)
+        check("5 mm scan is still allowed", "REFUSED" not in t and err is not True, t[:120])
+        check("5 mm scan carries a spacing caveat", "Caveat" in t and "does not resample" in t, t[:200])
+        t, _ = body(res, 4)
+        check("1.5 mm scan carries no such caveat", "does not resample" not in t, t[:120])
 
         # 3. A stock voxtell shadowing the fork is caught. The server is copied
         #    outside the repo first: in place it puts the repo checkout at the

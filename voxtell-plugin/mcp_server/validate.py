@@ -173,33 +173,66 @@ class Verdict:
     image: ImageFacts
     prompt_region: str
     matched_terms: list
+    caveats: list = field(default_factory=list)
+
+
+# Slice thickness at which the measurements below were taken. VoxTell v1.1 is a
+# no-resampling model — its plans.json says
+# "nnUNetResEncUNetLPlans_noResampling_3d_fullres", and the inference path does
+# not resample either — so the network sees voxels at whatever spacing the scan
+# was acquired at, through a fixed 192^3 patch. At 1 mm that patch covers about
+# 192 mm of anatomy; at 5 mm it covers 960 mm, longer than a torso. A 15 mm
+# lesion is 15 slices at 1 mm and 3 at 5 mm, so boundary partial-volume dominates.
+COARSE_SPACING_MM = 3.0
+
+
+def spacing_caveat(spacing) -> str:
+    """Warn about acquisition geometry the model is known to handle poorly.
+
+    Not grounds to refuse: the mask is still worth having, and on a large target
+    it may be fine. It is grounds to say so before the number is quoted.
+    """
+    if not spacing:
+        return ""
+    try:
+        coarsest = max(float(s) for s in spacing)
+    except (TypeError, ValueError):
+        return ""
+    if coarsest < COARSE_SPACING_MM:
+        return ""
+    return (
+        f"Coarsest voxel spacing is {coarsest:.1f} mm. VoxTell v1.1 does not resample, "
+        "so accuracy falls off on thick-slice scans: measured DSC 0.48 and 0.52 on two "
+        "5 mm liver-tumour cases against 0.86-0.87 on three at 0.8-1.0 mm (n=5). "
+        "Where the falloff begins between 1 mm and 5 mm has not been measured. "
+        "Expect a usable mask on a large target and an unreliable one on a small lesion."
+    )
 
 
 def check(arr, prompt: str, spacing=None, filename: str = "") -> Verdict:
     img = describe_image(arr, spacing, filename)
     p_region, terms = prompt_region(prompt)
+    caveats = [c for c in (spacing_caveat(spacing),) if c]
+
+    def verdict(allowed: bool, reason: str) -> Verdict:
+        return Verdict(allowed, reason, img, p_region, terms, caveats)
 
     # Unknown on either side is not grounds to refuse — it is grounds to proceed
     # with a note. A validator that blocks what it cannot classify is useless.
     if p_region == "unknown":
-        return Verdict(True, f"No recognised anatomy in the prompt; proceeding without a region check.",
-                       img, p_region, terms)
+        return verdict(True, "No recognised anatomy in the prompt; proceeding without a region check.")
     if img.region == "unknown":
-        return Verdict(True, f"Could not determine the body region from the image; proceeding without a region check.",
-                       img, p_region, terms)
+        return verdict(True, "Could not determine the body region from the image; proceeding without a region check.")
 
     if p_region == img.region:
-        return Verdict(True, f"Prompt targets the {p_region}, and the image looks like a {img.region} study.",
-                       img, p_region, terms)
+        return verdict(True, f"Prompt targets the {p_region}, and the image looks like a {img.region} study.")
 
     if (p_region, img.region) in ADJACENT:
-        return Verdict(True,
+        return verdict(True,
                        f"Prompt targets the {p_region}; the image reads as {img.region}. "
-                       f"These regions often share a field of view, so proceeding — check the output covers the target.",
-                       img, p_region, terms)
+                       f"These regions often share a field of view, so proceeding — check the output covers the target.")
 
-    return Verdict(False,
+    return verdict(False,
                    f"The prompt asks for a structure in the {p_region} "
                    f"({', '.join(terms[:3])}), but the image is a {img.modality} study of the {img.region}. "
-                   f"That structure is not in this field of view, so any mask returned would be meaningless.",
-                   img, p_region, terms)
+                   f"That structure is not in this field of view, so any mask returned would be meaningless.")

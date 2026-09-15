@@ -87,6 +87,34 @@ radiologist would use, and the adjacency rule is what makes it behave. It has
 not been tested on MR beyond the modality check, and the vocabulary covers
 common structures only.
 
+## Thick-slice scans
+
+VoxTell v1.1 does not resample. Its plans file says
+`nnUNetResEncUNetLPlans_noResampling_3d_fullres`, and the inference path has no
+resampling step either, so the network sees voxels at whatever spacing the scan
+was acquired at, through a fixed 192³ patch. At 1 mm that patch spans about
+192 mm of anatomy; at 5 mm it spans 960 mm, longer than a torso. A 15 mm lesion
+is 15 slices at 1 mm and 3 at 5 mm, so boundary partial-volume dominates.
+
+Measured on MSD-Liver with the prompt `liver tumor`:
+
+| z-spacing | cases | DSC |
+|---|---|---|
+| 5.0 mm | 2 | 0.479, 0.520 |
+| 0.8–1.0 mm | 3 | 0.861, 0.868, 0.872 |
+
+So `check_request` and `voxtell_segment` attach a caveat when the coarsest voxel
+spacing reaches 3 mm. It is a caveat and not a refusal: the mask is still worth
+having on a large target, and the model is not being misused — this is a
+property of the model, stated before a number gets written down rather than
+after.
+
+Two honest limits on that table. n=5, and where the falloff begins between 1 mm
+and 5 mm is unmeasured — 3 mm is a conservative place to start warning, not a
+measured threshold. And DSC scales with target size, so these five are not
+strictly comparable with each other: ground-truth volumes ranged from 2,793 to
+1,516,253 voxels.
+
 ## Install
 
 In Claude Code:
