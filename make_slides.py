@@ -867,8 +867,8 @@ bullets(s, [
 
 stat(s, "1.33x", "per object, mean of 4 runs", L, 3.4, 5, color=ACCENT)
 bullets(s, [
-    "0.288s to 0.215s per object",
     "Range 1.28 to 1.39x, so a 33% gain against an 8% spread",
+    "One job: 0.288s to 0.215s per object, which is 1.34x on its own",
 ], L, 4.85, 5.6, size=12, gap=0.42)
 
 stat(s, "+0.0002", "mean DSC change  ·  294 objects", 7.0, 3.4, 5)
