@@ -320,7 +320,7 @@ box(s, "Qwen3-Embedding-4B", "4B parameter encoder", L + 3.05, 1.85, 3.1, 0.8)
 arrow(s, L + 6.25, 2.08)
 box(s, "Embedding", "2560 dimensions", L + 6.6, 1.85, 2.4, 0.8)
 arrow(s, L + 9.1, 2.08)
-box(s, "Query", "864 dimensions", L + 9.45, 1.85, 2.0, 0.8, fill=PANEL,
+box(s, "Query", "2048 dimensions", L + 9.45, 1.85, 2.0, 0.8, fill=PANEL,
     lab_color=ACCENT)
 
 tx(s, "The projection", L, 3.15, 6, 0.35, size=13, bold=True, color=ACCENT)
@@ -328,7 +328,7 @@ code(s, [
     "self.project_text_embed = nn.Sequential(",
     "    nn.Linear(text_embedding_dim, 2048),",
     "    nn.GELU(),",
-    "    nn.Linear(2048, query_dim),   # query_dim = 864",
+    "    nn.Linear(2048, query_dim),   # query_dim = 2048",
     ")",
 ], L, 3.6, 6.4, 1.5)
 
@@ -347,9 +347,9 @@ tx(s, "A MaskFormer style head. The text embedding is used as a query, not as a 
    L, 1.75, 11.3, 0.4, size=14)
 
 for i, (lab, sub) in enumerate([
-    ("Text query", "864-d, from the prompt"),
+    ("Text query", "2048-d, from the prompt"),
     ("Transformer decoder", "6 layers, 8 heads, pre-norm"),
-    ("Per-stage projection", "864 to stage channels"),
+    ("Per-stage projection", "2048 to channels x 32 heads"),
     ("Dot with features", "mask logits per scale"),
 ]):
     x = L + i * 2.95
@@ -363,13 +363,13 @@ bullets(s, [
     "A dot product between query and decoder feature map gives the mask at that scale",
     "So the prompt does not select from a fixed label set. It parameterises the mask directly, which is why the vocabulary is open",
 ], L, 3.55, 11.4, size=13, gap=0.58)
-source(s, "voxtell/model/voxtell_model.py: DECODER_CONFIGS, num_maskformer_stages=5, decoder_layer=4, TRANSFORMER_NUM_LAYERS=6, TRANSFORMER_NUM_HEADS=8.")
+source(s, "Dimensions read from the checkpoint, not from constructor defaults, which disagree: project_text_embed is (2048, 2560), pos_embed is 1728 = 12 cubed, and the stage-4 projection is 10240 = 320 x 32 heads.")
 
 # ═══ 11 — Transformer decoder detail ═══════════════════════════════════════
 s = slide()
 head(s, "VoxTell: Prompt Decoder Internals")
 table(s, ["Parameter", "Value", "Note"], [
-    ("d_model", "864", "query dimension throughout"),
+    ("d_model", "2048", "query dimension throughout"),
     ("Layers", "6", "TRANSFORMER_NUM_LAYERS"),
     ("Heads", "8", "TRANSFORMER_NUM_HEADS"),
     ("Feedforward", "2048", "inner width of each layer"),
@@ -387,9 +387,9 @@ code(s, [
 ], 8.2, 2.35, 4.2, 1.5, size=10)
 bullets(s, [
     "Standard transformer decoder, used for prompt fusion rather than generation",
-    "Cheap next to the 4B text encoder: it runs on one 864-d token",
+    "Cheap next to the 4B text encoder: it runs on a single 2048-d query token",
 ], 8.2, 4.05, 4.2, size=12, gap=0.62)
-source(s, "voxtell/model/transformer.py, TransformerDecoderLayer.")
+source(s, "voxtell/model/transformer.py, with every width confirmed against fold_0/checkpoint_final.pth rather than the constructor defaults.")
 
 # ═══ 12 — No resampling ════════════════════════════════════════════════════
 s = slide()
