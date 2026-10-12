@@ -510,7 +510,7 @@ table(s, ["", "VoxTell v1.1", "nnInteractive v1.0"], [
     ("Prompt enters", "As a transformer query, late", "As input channels, early"),
     ("Prompt encoder", "Qwen3-Embedding-4B, 4B params", "None"),
     ("Head", "MaskFormer style, 5 scales", "Standard segmentation head"),
-    ("Resampling", "None", "Handled by AutoZoom instead"),
+    ("Resampling", "None", "Not stated in the paper"),
     ("Iterative", "No", "Yes, previous prediction fed back"),
 ], L, 1.8, CW, 3.9, widths=[2.3, 4.55, 4.6], fsize=10)
 tx(s, "Late fusion buys an open vocabulary. Early fusion buys iteration and a much cheaper prompt.",
