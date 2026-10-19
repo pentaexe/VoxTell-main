@@ -1,6 +1,6 @@
 #!/bin/bash
-#SBATCH --job-name=vox_fair_ct
-#SBATCH --output=/scratch/brianx7/logs/vox_fair_ct_%j.out
+#SBATCH --job-name=vox_fair_ct_crop
+#SBATCH --output=/scratch/brianx7/logs/vox_fair_ct_crop_%j.out
 #SBATCH --gpus=nvidia_h100_80gb_hbm3_3g.40gb:1
 #SBATCH --mem=32G
 #SBATCH --ntasks=1
@@ -27,6 +27,9 @@ CT_CASE=$(ls -1 /scratch/brianx7/cvpr_val/3D_val_npz/CT_*.npz | sort | head -1)
 echo "CT case: $CT_CASE"
 
 export BENCH_IMAGE="$CT_CASE"
+# Baseline crops to non-zero, as upstream VoxTell's preprocess does. Jobs 56964411
+# and 56966901-903 ran without it, which credited upstream's crop to v3.
+export BASELINE_CROP=1
 # BENCH_PROMPTS deliberately unset: these npz cases carry a 'text_prompts' key,
 # so the script reads the correct anatomy from the file rather than guessing it.
 

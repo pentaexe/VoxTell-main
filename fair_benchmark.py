@@ -4,11 +4,18 @@ Fair GPU-vs-GPU Benchmark — VoxTell
 Measures v0 (no optimizations, GPU) vs v3 (all optimizations, GPU) on the
 SAME hardware platform so the comparison is honest.
 
-v0_gpu: INT4 (NF4) text encoder on GPU, tile_step=0.5, no embedding cache, no Numba
+v0_gpu: INT4 (NF4) text encoder on GPU, tile_step=0.5, no embedding cache, no Numba,
+        crop-to-nonzero via nnunetv2 (as upstream VoxTell does)
 v3:     INT4 (NF4) text encoder on GPU, tile_step=0.75, full cache + Numba
 
 Both arms use identical INT4 (NF4) quantization so the comparison isolates only
-algorithmic gains (Numba preprocessing, crop-to-nonzero, tile_step, embedding cache).
+algorithmic gains (Numba preprocessing, tile_step, embedding cache).
+
+Crop-to-nonzero is NOT one of those gains. Upstream MIC-DKFZ VoxTell's preprocess
+already calls crop_to_nonzero, so a baseline without it is slower than stock VoxTell
+and credits the crop to this fork. Jobs 56964411 and 56966901-903 ran that way
+(25 vs 9 patches; tile_step alone gives 16 on a 512x512 slice), so their 2.7x is
+inflated. BASELINE_CROP=0 reproduces them; the default is the fair baseline.
 This addresses the reviewer comment that the original 145.25s baseline was
 measured on CPU (silent VRAM overflow in FP32) which is an unfair comparison.
 """
@@ -24,6 +31,7 @@ from nnunetv2.imageio.nibabel_reader_writer import NibabelIOWithReorient
 from nnunetv2.inference.sliding_window_prediction import compute_gaussian, compute_steps_for_sliding_window
 from acvl_utils.cropping_and_padding.bounding_boxes import insert_crop_into_image
 from acvl_utils.cropping_and_padding.padding import pad_nd_image
+from nnunetv2.preprocessing.cropping.cropping import crop_to_nonzero
 from transformers import AutoModel, AutoTokenizer
 
 from voxtell.model.voxtell_model import VoxTellModel
@@ -52,13 +60,17 @@ MODEL_DIR  = _CLUSTER_MODEL if os.path.exists(_CLUSTER_MODEL) else _DEFAULT_MODE
 PROMPTS    = [p.strip() for p in os.environ.get("BENCH_PROMPTS", "brain").split(",") if p.strip()]
 DEVICE     = torch.device("cuda:0")
 TEXT_MODEL = "Qwen/Qwen3-Embedding-4B"
+# 1 (default): baseline crops to non-zero like upstream VoxTell — the fair baseline.
+# 0: the old uncropped baseline, only to reproduce the superseded 2.7x jobs.
+BASELINE_CROP = os.environ.get("BASELINE_CROP", "1") != "0"
 
 print("=" * 70)
 print("VoxTell Fair GPU-vs-GPU Benchmark")
 print("=" * 70)
 print(f"GPU : {torch.cuda.get_device_name(0)}")
 print(f"Image: {IMAGE_PATH}")
-print(f"Prompts: {PROMPTS}\n")
+print(f"Prompts: {PROMPTS}")
+print(f"Baseline crop-to-nonzero: {'ON (matches upstream VoxTell)' if BASELINE_CROP else 'OFF (superseded, reproduces old jobs only)'}\n")
 
 # Results filename — computed up front so a stale file from a previous run is
 # removed now. Otherwise a crashed run leaves the old numbers on disk looking fresh.
@@ -72,7 +84,9 @@ else:
 # Tag the image too — a CT result must never overwrite a brain result, since the
 # two are not comparable and mixing them is how the wrong number reaches a slide.
 _img_tag = "ct_" + Path(IMAGE_PATH).stem.replace(".nii", "") if IMAGE_PATH.endswith(".npz") else "brain"
-out_file = f"fair_benchmark_{_gpu_tag}_{_img_tag}_results.txt"
+# Tag the baseline too, so a fair-baseline result never overwrites an old one.
+_base_tag = "" if BASELINE_CROP else "_nocropbase"
+out_file = f"fair_benchmark_{_gpu_tag}_{_img_tag}{_base_tag}_results.txt"
 if Path(out_file).exists():
     Path(out_file).unlink()
     print(f"Removed stale {out_file} from a previous run.\n")
@@ -182,16 +196,23 @@ print("GPU warm.\n")
 print("=" * 70)
 print("Running v0_gpu (GPU baseline — INT4, tile_step=0.5, no cache, numpy)")
 print("  tile_step=0.5, no embedding cache, standard numpy preprocessing")
+print(f"  crop-to-nonzero: {'nnunetv2 crop_to_nonzero (as upstream)' if BASELINE_CROP else 'OFF'}")
 print("=" * 70)
 
 # Phase 1: Preprocessing (standard numpy, no Numba)
 t0 = time.perf_counter()
-data_v0 = raw_img[0].astype(np.float32)
+if BASELINE_CROP:
+    # The same call upstream VoxTell's preprocess makes, so the baseline sees the
+    # same cropped volume stock VoxTell would, and the crop is not credited to v3.
+    _cropped, _, bbox_v0 = crop_to_nonzero(raw_img.astype(np.float32), None)
+    data_v0 = _cropped[0]
+else:
+    data_v0 = raw_img[0].astype(np.float32)
 nonzero = data_v0 != 0.0
 mean = float(data_v0[nonzero].mean()) if nonzero.any() else float(data_v0.mean())
 std  = max(float(data_v0[nonzero].std()), 1e-8) if nonzero.any() else 1.0
 data_v0 = ((data_v0 - mean) / std).astype(np.float32)
-data_v0 = torch.from_numpy(data_v0[None])   # no crop
+data_v0 = torch.from_numpy(data_v0[None])
 torch.cuda.synchronize()
 t_pre_v0 = time.perf_counter() - t0
 print(f"  [pre]   {t_pre_v0:.3f}s  shape={tuple(data_v0.shape)}")
@@ -416,9 +437,17 @@ if n_patches_v0 == len(slicers_v3):
     print(f"    Identical patch count. This volume is {tuple(raw_img.shape[1:])} against a")
     print(f"    {patch_size} patch, so the sliding-window grid is tiny at BOTH tile_step")
     print( "    settings and the parameter has almost nothing to act on here.")
-    print( "    => On THIS volume the sliding-window gain is crop-to-nonzero, not tile_step.")
     print( "    This does NOT show tile_step is ineffective generally — the 343→125 patch")
     print( "    figure came from a different, larger image and is untested on this one.")
+# Both arms should now crop to the same box. If they don't, the patch counts are not
+# comparing tile_step alone and the speedup must not be reported as such.
+print(f"  Cropped shape: v0_gpu {tuple(data_v0.shape[1:])} vs v3 {tuple(data_v3.shape[1:])}")
+if BASELINE_CROP and tuple(data_v0.shape[1:]) != tuple(data_v3.shape[1:]):
+    print( "  WARNING: v0 (nnunetv2) and v3 (Numba) crops differ. The patch difference is")
+    print( "           not tile_step alone — do not report this speedup until explained.")
+if not BASELINE_CROP:
+    print( "  WARNING: baseline crop OFF. v0 is slower than stock VoxTell, so this speedup")
+    print( "           credits upstream's crop to v3. Superseded; do not report.")
 print(f"  Sliding window alone: {t_slide_v0:.3f}s → {t_slide_v3:.3f}s = {t_slide_v0/t_slide_v3:.2f}×")
 if t_pre_v3 > t_pre_v0:
     print(f"  NOTE: Numba preprocessing is SLOWER here ({t_pre_v0:.3f}s → {t_pre_v3:.3f}s)."
@@ -441,6 +470,9 @@ lines = [
     f"Image: {Path(IMAGE_PATH).name}  shape={tuple(raw_img.shape[1:])}  voxels={_vox:,}",
     f"Prompts: {PROMPTS}",
     f"Patch size: {patch_size}",
+    "",
+    f"Baseline crop-to-nonzero: {'ON (matches upstream VoxTell)' if BASELINE_CROP else 'OFF (superseded)'}",
+    f"Cropped shape: v0_gpu {tuple(data_v0.shape[1:])} vs v3 {tuple(data_v3.shape[1:])}",
     "",
     f"v0_gpu total : {total_v0:.2f}s  (INT4 NF4, tile_step=0.5, no cache, numpy preprocess)",
     f"v3 cold total: {total_v3_cold:.2f}s  (INT4 NF4, tile_step=0.75, no cache, Numba)",
